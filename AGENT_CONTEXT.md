@@ -16,6 +16,7 @@
 - **Latest published web build:** https://nmeidan.itch.io/superinverters — the live WebGL build, "the latest web version."
 - **Build target for multiplayer: WebGL.** Confirmed by user 2026-04-30. Plan all networking choices around WebGL constraints (no raw UDP; use WebSocket transport or WebRTC).
 - **No lobby UI.** Confirmed by user 2026-04-30. The flow is link-share only; do not build a server browser or room list.
+- **Networking stack: Photon.** User has an active Photon account (signed up + email verified) and has created a Photon project in the dashboard. **The Photon App ID from that dashboard is the next thing the next agent needs from the user** — it goes into the Photon settings asset in Unity. *Which* Photon SDK the project was created for (PUN 2 vs Fusion vs Realtime) is unconfirmed and decides which Unity package to install.
 - **Goal of this branch:** add **simple multiplayer** to a 2-player local game. See "Multiplayer goal" below.
 - **No CLAUDE.md exists.** This file is the source of truth for project-wide guidance until one is written.
 
@@ -65,8 +66,9 @@ super-inverters-game/
 - No anti-cheat / authoritative-server hardening — friends only.
 
 **Still-open questions for the user (smaller now):**
-- **Networking stack.** Best-fit candidates for WebGL + "share a code" UX: **Photon Fusion / PUN** (easiest room-code flow, free tier with CCU cap, vendor lock-in), **Mirror + SimpleWebTransport + a relay** (free, more wiring), **Unity NGO + Relay (WebSocket)** (official, free tier, newer WebGL story). Recommend Photon for "simplest"; recommend Mirror for "no SaaS dependency."
-- **Hosting model:** host-authoritative (host's browser is the server) vs dedicated relay only. Photon and Unity Relay both relay packets without dedicated server code; pick one and host-authoritative is fine for friends.
+- **Which Photon product** the user's dashboard project was created for: **PUN 2** (recommended for this use case — simplest room/code flow, mature, lots of tutorials), **Fusion** (newer, tick-based, more complex), **Realtime** (lower-level), or **Quantum** (deterministic rollback, overkill). The "App Type" field on the dashboard project will say. Until the next agent confirms, do not install a Unity package.
+- **App ID** value from the Photon dashboard — copy-pasted into the Photon settings asset in Unity once the SDK is installed. Ask the user for it.
+- **Hosting model:** host-authoritative is fine for two friends. Photon Cloud handles the relay either way; no dedicated server code needed.
 
 ---
 
@@ -121,6 +123,26 @@ When you (a future agent) work on this repo:
 ## Update log
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
+
+### 2026-04-30 — Photon chosen as networking stack (account + project already exist)
+
+**Agent session goal:** Capture that the user, in the prior (interrupted) agent session, was directed to Photon, signed up, verified email, and created a Photon dashboard project. Then they got stuck.
+
+**What I did:**
+- Updated STOP section to lock in Photon as the networking stack.
+- Replaced the "pick a stack" open question with two narrower asks: confirm *which Photon SDK* (PUN 2 / Fusion / Realtime / Quantum) the dashboard project was created for, and get the App ID.
+- Committed the update.
+
+**State left behind:** Branch `Multiplayer`, working tree clean, this commit + previous AGENT_CONTEXT.md commit are ahead of origin and not pushed. No Unity package installed yet — DO NOT install a Photon SDK before confirming which product the dashboard project is for.
+
+**What's blocked or unclear:**
+- Which Photon product the user's project is for (visible on their dashboard as "App Type" / "Type"). PUN 2 is the recommended fit; if the prior agent walked them into Fusion, that's workable but more complex.
+- The literal App ID string.
+- What specifically the user got "stuck" on. Likely candidates: didn't know what to paste where in Unity; couldn't find the App ID; was about to install the SDK when the agent crashed. Ask them.
+
+**Next agent should:**
+1. Ask the user: (a) "On your Photon dashboard, what is the App Type of the project you created — PUN, Fusion, Realtime, or Quantum?" (b) "Can you share the App ID? It's a long hex string visible on the dashboard." (c) "Where exactly did you get stuck — pre-install, mid-install, or trying to wire up a script?"
+2. Once both answers are in: install the matching SDK from the Unity Asset Store / Package Manager into the project, paste the App ID into the auto-generated `PhotonServerSettings` asset, and verify the Unity Editor connects to Photon's name server (visible in the console as a "Connected to Master" log line). Stop there in that session — don't start writing gameplay sync code yet.
 
 ### 2026-04-30 — User confirmed WebGL, no-lobby flow, and host-picks-color UX
 
