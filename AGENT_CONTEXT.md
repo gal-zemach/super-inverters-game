@@ -142,7 +142,70 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
-### 2026-04-30 — PUN setup verified end-to-end; ready for multiplayer integration
+### 2026-04-30 — Slice 1 code complete (Editor-verified); WebGL build aborts at runtime in Photon WS callback
+
+**Agent session goal:** User implemented Slice 1 (`MultiplayerBootstrap` + scene + Build Settings flip), verified it works in the Unity Editor, and tried to ship a WebGL build. Agent's role: post-hoc documentation, then attempted WebGL fixes (none of which worked). Net outcome: Slice 1 is real and Editor-runnable; WebGL is blocked.
+
+**What got built this session:**
+- `Assets/scripts/Multiplayer/MultiplayerBootstrap.cs` (133 lines, namespace `Multiplayer`). Implements Slice 1 verbatim: `MonoBehaviourPunCallbacks` subclass that on `Start` reads `?room=XYZ` from `Application.absoluteURL`, calls `PhotonNetwork.ConnectUsingSettings()`, and on `OnConnectedToMaster` either joins the URL room or creates a new one with a 6-char hex code (max 2 players, invisible). Logs share URL in `OnJoinedRoom` for the master client. Has callbacks for create/join failure and disconnect. **Verified working in Editor 2026-04-30:** all five expected log lines appear (`Connecting to Photon... → Connected to master (eu) → Hosting new room 'BACB87' → Joined room as actor #1 (1/2 players) → Share this URL ...`).
+- New scene `Assets/Scenes/Multiplayer .unity`. **⚠ Filename has a trailing space before `.unity`** — fine for Unity but cursed in shell (needs quoting). Should be renamed to `Multiplayer.unity` from inside the Editor next session (Editor handles ref updates automatically).
+- `Assets/link.xml` (agent-authored) preserves `PhotonUnityNetworking`, `PhotonUnityNetworking.Utilities`, `PhotonRealtime`, `PhotonChat`, `PhotonWebSocket`, `Photon3Unity3d` from managed code stripping. The PUN-shipped `Assets/Photon/PhotonUnityNetworking/link.xml` only preserves a few `mscorlib`/`System` namespaces and `ExitGames.Client.Photon` — it does **not** cover the PUN/Realtime assemblies themselves, so a project-level `link.xml` is necessary.
+- Build Settings: only `Scenes/Multiplayer` checked at index 0; all other scenes unchecked. Target: WebGL.
+- `PlayerSettings.apiCompatibilityLevelPerPlatform` — switched to `.NET 4.x` for WebGL mid-session, then reverted to `.NET Standard 2.0` (which is Photon's recommendation for WebGL anyway). Net diff in commit may be near-zero.
+- `.gitignore` (this session): added `Web build*/` and `.claude/` patterns to keep build outputs and the agent-worktree directory out of commits.
+
+**WebGL debug dead-ends — DO NOT re-run these in a future session:**
+
+WebGL build succeeds (`Build completed with a result of 'Succeeded'`, ~120–140s) but the wasm aborts at runtime the moment Photon opens its WebSocket. Browser console shows `[Multiplayer] Connecting to Photon...` followed immediately by:
+
+```
+Invalid function pointer called with signature 'vi'.
+Build with ASSERTIONS=2 for more info.
+163
+abort(163) at Error
+    at jsStackTrace (.../framework.js:739:12)
+    at stackTrace (.../framework.js:753:11)
+    at abort (.../framework.js:19:44)
+    at nullFunc_vi (.../framework.js:15660:2)
+    at b163 (.../build2.wasm)
+    at dynCall_vi (.../build2.wasm)
+    at WebSocket.<anonymous> (.../framework.js:3908:3)
+```
+
+JS WebSocket callback dispatches into wasm via `dynCall_vi` → function table index 163 is null/`nullFunc_vi` → abort. Looks like managed code stripping or a related IL2CPP issue, but is not — none of the following moved the needle:
+
+- **Managed Stripping Level**: `Low` is the floor in Unity 2020.3 (no `Disabled`/`Minimal` option in this version's WebGL dropdown — confirmed by user: only `Low/Medium/High`).
+- **Project-level `link.xml`** preserving PUN, Realtime, Chat, WebSocket, Photon3Unity3d. Build still aborts at the same function index. (Adding broader preserves like `mscorlib` `System.Reflection` to link.xml caused a different failure: `build.bc is not valid LLVM bitcode` — IL2CPP-generated C++ that Emscripten can't compile. Reverted.)
+- **`.NET 4.x` ↔ `.NET Standard 2.0`** for WebGL — identical crash both ways.
+- **"Strip Engine Code" off** — caused build to fail entirely with `build.bc is not valid LLVM bitcode`. Re-enabled.
+- **Development Build off** (release build) — same `b163` abort.
+- **Lightmap Encoding → Normal Quality** — same abort.
+- **IL2CPP cache wipe**: `rm -rf Library/Bee Library/IL2CPPBuildCache Library/PlayerDataCache` followed by reopen + rebuild — same abort.
+
+So the runtime crash is **deterministically baked into IL2CPP's wasm output for this project + PUN + Unity 2020.3.48f1 + macOS** combination. Not config-fixable from the user side. Working theory: Unity 2020.3.48 has a known bug in IL2CPP function-pointer table generation that hits when PUN's WebGL WebSocket layer registers JS-callable callbacks via `Marshal.GetFunctionPointerForDelegate`. Photon forums + Unity issue tracker likely have hits — neither was searched this session.
+
+**State left behind:**
+- Branch `Multiplayer`, local == `origin/Multiplayer` (0/0) at the start of this session. After this session's commit there will be **1 commit ahead, not pushed.**
+- Slice 1 commit (this session) bundles: `Assets/scripts/Multiplayer/`, `Assets/Scenes/Multiplayer .unity` (+ `.meta`), `Assets/link.xml` (+ `.meta`), `ProjectSettings/{ProjectSettings,EditorBuildSettings}.asset`, `.gitignore`, `AGENT_CONTEXT.md`. **Skipped from the commit:** `Assets/Scenes/level_2.unity`, `start_scene_2.unity` modifications, the `*Settings.lighting` bake outputs, `UserSettings/EditorUserSettings.asset`, `ProjectSettings/{SceneTemplateSettings.json,TimelineSettings.asset}`, `Web build 2/`, `.claude/`. Those remain in the working tree — user can decide what to do with them later.
+- `Web build 2/` (the failing WebGL build output) lives in the working tree but is now gitignored — left in place so the user can keep poking at it without rebuilding from scratch.
+- Photon dashboard / App ID untouched. `PhotonServerSettings.asset` still gitignored.
+
+**What's blocked or unclear:**
+- WebGL build is blocked end-to-end (see dead-ends above). Genuinely unclear whether this is fixable without bumping Unity version or filing a Photon ticket.
+- Two-peer end-to-end connect has been proven in *one* Editor instance only — has not been tested with two clients in the same room (one Editor + one build, or two Editors via ParrelSync). Slice 1 isn't fully validated until that's done.
+- The trailing-space scene filename should still be renamed (`Multiplayer .unity` → `Multiplayer.unity`) — easy in the Editor, fiddly afterward.
+
+**Next agent should:**
+1. Install **ParrelSync** (free Unity package, `https://github.com/VeriorPies/ParrelSync.git` via Package Manager → "Add package from git URL"). Lets you spin up a second Editor instance pointing at the same project. ~5 min of setup.
+2. With two Editor instances open, validate two-peer connect: one acts as host (creates room), the other as joiner (uses `?room=XXXXXX` via the room-code log line — but since `Application.absoluteURL` is empty in the Editor, the joiner needs to call `PhotonNetwork.JoinRoom("XXXXXX")` directly or `MultiplayerBootstrap` needs an Editor-only override for the room code). Add the override if needed; it's a few lines.
+3. Rename `Multiplayer .unity` → `Multiplayer.unity` from inside the Editor (Project pane right-click → Rename).
+4. Once two-peer connect is proven in-Editor, start **Slice 2 (color assignment)** — see "Planned multiplayer integration." Add a `hostColor` custom room property; joiner reads it on `OnJoinedRoom` and instantiates the opposite-color player via `PhotonNetwork.Instantiate`. Don't touch `PlayerManager` or `GameManager` yet.
+5. **WebGL is a separate, parked problem.** Don't burn another full session on it without:
+   - Searching the Photon forums for the exact stack signature (`abort(163)` + `nullFunc_vi` + `WebSocket.<anonymous>` on Unity 2020.3 macOS).
+   - Considering a Unity version bump (2020.3.x final, or 2021.3 LTS) — but per STOP section, this is a deliberate user decision; don't unilaterally upgrade.
+   - Trying the build on a non-macOS machine (Windows/Linux) to confirm it's the macOS toolchain.
+
+
 
 **Agent session goal:** Verify the PUN install works against Photon Cloud and commit the import as a checkpoint.
 

@@ -63,6 +63,12 @@ xcuserdata/
 *.bak
 GoogleAarExplodeCache.xml
 
+# WebGL build outputs (any "Web build*", e.g. "Web build", "Web build 2")
+[Ww]eb build*/
+
+# Claude Code agent worktrees
+.claude/
+
 # Photon — PhotonServerSettings holds the App ID (a credential).
 # This repo is public; do not track it. Each developer pastes their own App ID
 # into the PUN Setup Wizard locally.
