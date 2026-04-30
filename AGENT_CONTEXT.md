@@ -67,9 +67,26 @@ super-inverters-game/
 - No reconnect flow, no spectator mode, no >2 players.
 - No anti-cheat / authoritative-server hardening — friends only.
 
-**Still-open questions for the user (smaller now):**
-- **Secret-handling for the App ID** before the first PUN commit. Two reasonable options: (a) gitignore `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset` outright, (b) commit a stub asset with an empty App ID and load the real one from a per-developer untracked file. Option (a) is simpler; option (b) is friendlier if more devs join. Confirm with user.
-- **Hosting model:** host-authoritative is fine for two friends. Photon Cloud handles the relay; no dedicated server code needed.
+**Decisions locked in 2026-04-30:**
+- Secret handling: **gitignore** `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset` (and `.meta`). Each dev pastes their own App ID locally via the PUN Setup Wizard. See `.gitignore` lines ~67–68.
+- Photon tracking scope: **track everything under `Assets/Photon/`** (39 MB) as a single checkpoint commit. Demos and PhotonChat included for now; can be slimmed later if repo size becomes an issue. The PhotonServerSettings asset is the only excluded path.
+- Hosting model: **host-authoritative**, Photon Cloud handles relay. The user's PUN app is on the **EU dev region** (set in PhotonServerSettings as the default dev region) — fine for testing; can be changed to "best region" before shipping if the player base is non-EU.
+
+## Planned multiplayer integration (vertical slices)
+
+Build one slice at a time and verify before moving on. Don't write all of this in one go.
+
+**Slice 1 — Two peers in one room.** Add a tiny `MultiplayerBootstrap` MonoBehaviour that on Start: reads a `?room=XYZ` URL parameter (via `Application.absoluteURL`); if present, joins room `XYZ`; if absent, creates a new room with a random ID and logs the share URL to the console. Verify by running two Editor instances (or one Editor + one Build) and watching them recognize each other (`OnPlayerEnteredRoom` fires). No gameplay yet.
+
+**Slice 2 — Color assignment.** Add a `hostColor` custom room property set by the room creator. The joiner reads it on `OnJoinedRoom` and takes the opposite. Each peer instantiates a single Player from `Assets/Prefabs/Player.prefab` via `PhotonNetwork.Instantiate`, with the right `Framework` set on its `PlayerState`. Verify both Players appear on both screens, with the right colors.
+
+**Slice 3 — Networked input.** Add `NetworkController : Controller` (in `Assets/scripts/Controllers/`). On the local Player, the existing `KeyboardController` / `PS4Controller` keep working and their inputs are sent over the network via a `PhotonView` + `IPunObservable` on the Player. On the remote Player, `NetworkController` returns the replicated values via the existing `Controller` interface. Use the `Controller` polymorphism — do NOT modify `PlayerManager`. Verify: two browser tabs, both players move on both screens.
+
+**Slice 4 — Networked spawn/kill events.** `GameManager.SpawnShot`/`SpawnShell` need to use `PhotonNetwork.Instantiate` (or a manual RPC) so projectiles appear on both peers. `GameManager.PlayerKilled` needs to be an RPC so the score and round-reload happen on both clients. `SceneManager.LoadScene` calls become `PhotonNetwork.LoadLevel` (PUN's networked equivalent that auto-syncs the joiner).
+
+**Slice 5 — Multiplayer menu + link UX.** New `multiplayer_menu` scene with two buttons: "Host as Black" / "Host as White" (and "Cancel"). On click → bootstrap creates a room, sets `hostColor`, displays the shareable URL in copyable text. The joiner just opens the URL and lands directly in the game scene as the opposite color (no menu).
+
+**Out of scope (per user 2026-04-30):** lobby UI, room browser, reconnect, >2 players, anti-cheat.
 
 ---
 
@@ -124,6 +141,38 @@ When you (a future agent) work on this repo:
 ## Update log
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
+
+### 2026-04-30 — PUN setup verified end-to-end; ready for multiplayer integration
+
+**Agent session goal:** Verify the PUN install works against Photon Cloud and commit the import as a checkpoint.
+
+**What I did:**
+- User pasted App ID into the PUN Setup Wizard, hit Setup Project. Console: clean.
+- User opened `Assets/Photon/PhotonUnityNetworking/Demos/PunBasics-Tutorial/Scenes/PunBasics-Launcher.unity`, pressed Play, entered name. Game view + console showed: `OnConnectedToMaster` → `OnJoinRandomFailed` (expected, no rooms yet) → `OnJoinedRoom with 1 Player(s)`. Networking confirmed working.
+- The remaining red console line `Scene 'PunBasics-Room for 1' couldn't be loaded` is a demo-only issue (the demo's next scene isn't in Build Settings). Harmless. Ignore.
+- Cleaned up `.gitignore`: added `[Ll]ogs/` and `[Uu]ser[Ss]ettings/`. Untracked 21 stale shader-compiler logs that had been polluting commits since project creation. (commit `c46e9570`)
+- Committed all of `Assets/Photon/` as one checkpoint, 978 files, 39 MB. `PhotonServerSettings.asset` confirmed excluded. (commit `54fe2c06`)
+- Updated this doc: locked in secret-handling decision, locked in tracking scope, added a 5-slice integration plan to the "Planned multiplayer integration" section.
+
+**State left behind:**
+- Branch `Multiplayer`, working tree clean. **7 commits ahead of `origin/Multiplayer`**, not pushed:
+  - `54fe2c06` Add Photon PUN 2
+  - `c46e9570` Untrack Logs/UserSettings
+  - `afe9603a` Document AppKit crash
+  - `d185b398` Gitignore PhotonServerSettings
+  - `186dee2f` Confirm PUN 2; flag App-ID handling
+  - `0514b424` Record Photon as networking choice
+  - `314c2946` Add AGENT_CONTEXT.md
+- Photon configured: app type PUN, region `eu`, dev mode. App ID is local-only in `PhotonServerSettings.asset`.
+
+**What's blocked or unclear:**
+- Whether to push the 7 local commits to `origin/Multiplayer` now (a checkpoint) or wait until Slice 1 lands.
+- Whether to start writing Slice 1 in this same session or hand off here. The user designed this AGENT_CONTEXT.md flow specifically to handle context exhaustion mid-implementation; this is a natural handoff point if the next slice is best fresh.
+
+**Next agent should:**
+1. Confirm with user: "Push current 7 commits, or wait?" and "Start Slice 1 (two-peer connect with URL room param) now, or start fresh in a new session?"
+2. If proceeding with Slice 1: create `Assets/scripts/Multiplayer/MultiplayerBootstrap.cs`, attach to a GameObject in a new test scene `Assets/Scenes/multiplayer_test.unity`, verify with two Editor instances (use Unity's "Multiplayer Play Mode" preview package or just build + open the build alongside the editor). Don't touch `PlayerManager`, `GameManager`, or any existing gameplay scripts in Slice 1.
+3. Read the "Planned multiplayer integration" section above for the full slice breakdown — don't expand scope mid-slice.
 
 ### 2026-04-30 — PUN 2 imported successfully despite a Unity AppKit crash on dialog dismissal
 
