@@ -60,3 +60,9 @@ xcuserdata/
 *.apk
 *.bak
 GoogleAarExplodeCache.xml
+
+# Photon — PhotonServerSettings holds the App ID (a credential).
+# This repo is public; do not track it. Each developer pastes their own App ID
+# into the PUN Setup Wizard locally.
+Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset
+Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset.meta
