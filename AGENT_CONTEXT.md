@@ -125,6 +125,35 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
+### 2026-04-30 — PUN 2 imported successfully despite a Unity AppKit crash on dialog dismissal
+
+**Agent session goal:** Get PUN 2 imported and the App ID pasted into PhotonServerSettings.
+
+**What I did:**
+- Added `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset` and its `.meta` to `.gitignore` BEFORE running the import (commit `d185b398`). Done so the App ID can't accidentally land in a public commit.
+- User clicked Import in the PUN 2 Unity Package dialog. Unity then popped a Bug Reporter window — crash.
+- **Diagnosed: import actually succeeded.** `Editor.log` shows every PUN assembly compiled cleanly (`PhotonUnityNetworking.dll`, `PhotonRealtime.dll`, demos, project's `Assembly-CSharp.dll` — all green), then a macOS AppKit bug fired during progress-dialog cleanup:
+  - `-[NSApplication runModalSession:]: Use of freed session detected.`
+  - `objc_removeExceptionHandler() ... probably a bug in multithreaded AppKit use.`
+  - Stack: `[ProgressbarController dealloc] → endModalSession: → _objc_terminate → abort`
+- This is a known Unity 2020.3-on-macOS issue, not caused by PUN or by anything we did. **Future agents: if this crash recurs after a long import, do not panic — check `~/Library/Logs/Unity/Editor.log` for the same `runModalSession`/`ProgressbarController dealloc` signature and confirm the import finished compiling before dismissing it as a real failure.**
+- Verified PUN files are on disk: `Assets/Photon/{PhotonChat, PhotonUnityNetworking, PhotonLibs, PhotonRealtime}` total 39 MB.
+
+**State left behind:**
+- Branch `Multiplayer`, working tree dirty (the entire `Assets/Photon/` tree of 39MB is untracked). **Do NOT `git add Assets/Photon` blindly** — first decide whether the demos and PhotonChat should be tracked, since they bloat the repo and we don't actually need them. Recommend tracking only `PhotonUnityNetworking/{Code, Plugins, Resources}`, `PhotonRealtime`, `PhotonLibs` and gitignoring `PhotonChat` + `**/Demos/`. Confirm with user before committing.
+- 4 commits ahead of `origin/Multiplayer`, not pushed.
+- App ID has NOT been pasted yet — user needs to reopen Unity (the crashed session never reached the wizard's submit step, even though the file got created). When they reopen: PUN Setup Wizard might auto-open; if not, open `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset` in the Inspector and paste there. The settings asset is gitignored, so the App ID stays local.
+
+**What's blocked or unclear:**
+- Whether to track all of `Assets/Photon/` or only the parts we use (see "State left behind").
+- Whether the PUN Setup Wizard reopens cleanly after the crash, or if we need to invoke it from the menu.
+
+**Next agent should:**
+1. Have the user reopen the project in Unity Hub. Confirm in the Editor that `Assets/Photon/` is visible in the Project panel and the console shows no compile errors.
+2. Have the user paste the App ID into `PhotonServerSettings.asset` (via the wizard or the inspector). Agent must not handle the App ID.
+3. Decide tracking scope for `Assets/Photon/` (recommend slimming as above) and update `.gitignore` accordingly before any commit that touches the directory.
+4. Verify connectivity: open `Assets/Photon/PhotonUnityNetworking/Demos/PunBasics-Tutorial/Scenes/PunBasics-Launcher.unity` (or any demo scene), press Play, look for `OnConnectedToMaster` or "Connected to master" in the console.
+
 ### 2026-04-30 — Confirmed PUN 2; flagged App-ID secret-handling before any PUN commit
 
 **Agent session goal:** Pin down the Photon product and App ID, surface the credential-leak risk before installing PUN in a public repo, and identify exactly where the user got stuck.
