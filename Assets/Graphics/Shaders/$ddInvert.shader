@@ -1,30 +1,46 @@
 //ddInvert shader: Daniel DeEntremont
 //Apply this shader to a mesh and watch all pixels behind the mesh become inverted!
 Shader "ddShaders/ddInvert" {
-    Properties
-        {
-            _Color ("Tint Color", Color) = (1,1,1,1)
-        }
-       
-        SubShader
-        {
-            Tags { "Queue"="Transparent" }
-     
-            Pass
-            {
-               ZWrite On
-               ColorMask 0
-            }
-			Pass
-			{
-				Blend OneMinusDstColor OneMinusSrcAlpha //invert blending, so long as FG color is 1,1,1,1
-				BlendOp Add
-				SetTexture [_Color] 
-				{
-					constantColor [_Color]
-					combine constant
-				}
+	Properties
+	{
+		_Color ("Tint Color", Color) = (1,1,1,1)
+	}
+
+	SubShader
+	{
+		Tags { "Queue"="Transparent" }
+
+		Pass
+		{
+			ZWrite On
+			ColorMask 0
+		}
+
+		Pass
+		{
+			Blend OneMinusDstColor OneMinusSrcAlpha
+			BlendOp Add
+
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+
+			fixed4 _Color;
+
+			struct appdata { float4 vertex : POSITION; };
+			struct v2f     { float4 pos    : SV_POSITION; };
+
+			v2f vert(appdata v) {
+				v2f o;
+				o.pos = UnityObjectToClipPos(v.vertex);
+				return o;
 			}
-			
-         }//end subshader
-}//end shader
+
+			fixed4 frag(v2f i) : SV_Target {
+				return _Color;
+			}
+			ENDCG
+		}
+	}
+}
