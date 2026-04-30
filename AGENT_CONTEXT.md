@@ -16,7 +16,9 @@
 - **Latest published web build:** https://nmeidan.itch.io/superinverters — the live WebGL build, "the latest web version."
 - **Build target for multiplayer: WebGL.** Confirmed by user 2026-04-30. Plan all networking choices around WebGL constraints (no raw UDP; use WebSocket transport or WebRTC).
 - **No lobby UI.** Confirmed by user 2026-04-30. The flow is link-share only; do not build a server browser or room list.
-- **Networking stack: Photon.** User has an active Photon account (signed up + email verified) and has created a Photon project in the dashboard. **The Photon App ID from that dashboard is the next thing the next agent needs from the user** — it goes into the Photon settings asset in Unity. *Which* Photon SDK the project was created for (PUN 2 vs Fusion vs Realtime) is unconfirmed and decides which Unity package to install.
+- **Networking stack: Photon PUN 2.** Confirmed 2026-04-30 from a screenshot of the user's Photon dashboard. The app on the dashboard is named **"Super Inverters"**, type **PUN** (= PUN 2; "PUN Classic" is long deprecated), free tier 20 CCU, status Public, **App ID prefix `159a8424-...`** (full value not stored here on purpose; see security note below).
+- **Photon App ID is a credential.** This repo is hosted on public GitHub. Do **not** commit the full App ID in any file (including `PhotonServerSettings.asset`, which the PUN setup wizard creates). When the SDK is installed, add the asset path PUN generates to `.gitignore`, OR keep a stub asset committed and load the real ID from a `.env`-style untracked file. Decide before the first PUN-related commit.
+- **No Photon files in the project yet.** Verified 2026-04-30. The prior agent walked the user through Photon signup + dashboard but never started the Unity install. That's where the user got stuck.
 - **Goal of this branch:** add **simple multiplayer** to a 2-player local game. See "Multiplayer goal" below.
 - **No CLAUDE.md exists.** This file is the source of truth for project-wide guidance until one is written.
 
@@ -66,9 +68,8 @@ super-inverters-game/
 - No anti-cheat / authoritative-server hardening — friends only.
 
 **Still-open questions for the user (smaller now):**
-- **Which Photon product** the user's dashboard project was created for: **PUN 2** (recommended for this use case — simplest room/code flow, mature, lots of tutorials), **Fusion** (newer, tick-based, more complex), **Realtime** (lower-level), or **Quantum** (deterministic rollback, overkill). The "App Type" field on the dashboard project will say. Until the next agent confirms, do not install a Unity package.
-- **App ID** value from the Photon dashboard — copy-pasted into the Photon settings asset in Unity once the SDK is installed. Ask the user for it.
-- **Hosting model:** host-authoritative is fine for two friends. Photon Cloud handles the relay either way; no dedicated server code needed.
+- **Secret-handling for the App ID** before the first PUN commit. Two reasonable options: (a) gitignore `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset` outright, (b) commit a stub asset with an empty App ID and load the real one from a per-developer untracked file. Option (a) is simpler; option (b) is friendlier if more devs join. Confirm with user.
+- **Hosting model:** host-authoritative is fine for two friends. Photon Cloud handles the relay; no dedicated server code needed.
 
 ---
 
@@ -123,6 +124,28 @@ When you (a future agent) work on this repo:
 ## Update log
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
+
+### 2026-04-30 — Confirmed PUN 2; flagged App-ID secret-handling before any PUN commit
+
+**Agent session goal:** Pin down the Photon product and App ID, surface the credential-leak risk before installing PUN in a public repo, and identify exactly where the user got stuck.
+
+**What I did:**
+- User shared two Photon dashboard screenshots. Confirmed: app **"Super Inverters"**, type **PUN** (= PUN 2), free tier 20 CCU, App ID prefix `159a8424-...`. Recorded prefix only — full ID is a credential and was deliberately not stored in this doc.
+- Verified there are zero Photon files in the project tree and no `photon` entries in `.gitignore`. So the prior agent never started the Unity install.
+- Added a security note in STOP: this repo is on public GitHub, so the App ID must not be committed. Logged two acceptable handling strategies (gitignore the settings asset, or stub-asset + untracked override).
+- Replaced the "which Photon product" open question (now answered) with the "secret-handling decision" open question (must answer before first PUN commit).
+
+**State left behind:** Branch `Multiplayer`, working tree clean after this commit. 3 commits ahead of `origin/Multiplayer`, not pushed. No Unity packages installed. No `.gitignore` changes yet.
+
+**What's blocked or unclear:**
+- User's App-ID handling preference (gitignore vs stub+override).
+- Whether the user wants me to *talk them through* the PUN install in Unity Editor (I cannot drive the Editor; I can only give precise click-by-click steps and read logs they paste back).
+
+**Next agent should:**
+1. Decide App-ID handling with the user, then add the corresponding `.gitignore` line **before** running PUN's setup wizard (so an accidental save can't leak the ID). If "gitignore the asset," append `Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset` and the matching `.meta` to `.gitignore`.
+2. Install PUN 2 via Unity's Package Manager → My Assets (after the user clicks "Add to My Assets" on https://assetstore.unity.com/packages/tools/network/pun-2-free-119922 if it's not already in their library). Import everything; the PUN Setup Wizard auto-opens.
+3. Have the **user** paste the App ID into the wizard — agents must not handle the secret.
+4. Verify connectivity: open `Assets/Photon/PhotonUnityNetworking/Demos/PunBasics-Tutorial/` (a demo scene), press Play, confirm console logs "OnConnectedToMaster". Stop there. Don't write gameplay sync code in the same session.
 
 ### 2026-04-30 — Photon chosen as networking stack (account + project already exist)
 
