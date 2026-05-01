@@ -45,7 +45,11 @@ namespace Multiplayer
 #if UNITY_EDITOR
             if (string.IsNullOrEmpty(pendingRoomToJoin) && !string.IsNullOrEmpty(editorRoomOverride))
             {
-                pendingRoomToJoin = editorRoomOverride.Trim();
+                string trimmed = editorRoomOverride.Trim();
+                // Be tolerant of the user pasting the full share string (e.g.
+                // "(editor) ?room=52F4AD" or a real WebGL URL) rather than
+                // just the room code. Fall back to the raw input otherwise.
+                pendingRoomToJoin = ReadRoomFromUrl(trimmed) ?? trimmed;
                 joinSource = "editor override";
                 Debug.Log($"[Multiplayer] Editor override: will join room '{pendingRoomToJoin}'.");
             }

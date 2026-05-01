@@ -144,6 +144,45 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
+### 2026-05-02 — Slice 3 (link-share UI) implemented and validated two-peer
+
+**Agent session goal:** Build the host-side share-link UI: a small panel with the room URL and a Copy button that puts it on the OS clipboard.
+
+**What got built:**
+- New `Assets/scripts/Multiplayer/LinkShareUI.cs` — `MonoBehaviourPunCallbacks` that builds its UI programmatically in `Awake` (no scene Canvas/wiring needed). Creates a screen-space-overlay Canvas with a `SharePanel` (white background, ~900x80 anchored top-center), a "Share:" label, a URL `Text` showing `BuildShareUrl(roomName)`, and a blue Copy button. On `OnJoinedRoom`, if `IsMasterClient`, populates URL and shows the panel; on `OnPlayerEnteredRoom` it hides the panel once the room is full (no point advertising further). Joiner peers create the canvas but never show the panel. Copy button writes to `GUIUtility.systemCopyBuffer`, swaps button label to "Copied!" for 1.5s.
+- Iterations during validation:
+  - Initial dark transparent panel was invisible against the dark game scene → flipped to opaque white panel with dark text.
+  - All `Text` components had no font: `Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")` returned null on this Unity 2020.3.48 + macOS setup. Added a `GetUIFont()` helper that tries `LegacyRuntime.ttf` → `Arial.ttf` → `Font.CreateDynamicFontFromOSFont("Arial", 16)` → logs warning if all fail. Fallback chain resolved the missing-text problem.
+- `MultiplayerBootstrap.cs` extension: `editorRoomOverride` now passes its trimmed value through `ReadRoomFromUrl` first, falling back to raw input. So pasting `(editor) ?room=ABCDEF` (or any future real WebGL share URL) into the clone's override field extracts `ABCDEF` correctly. Smaller failure mode if the user pastes a string that looks like a URL but isn't quite one — they get the trimmed string used as the room code, which then fails on `JoinRoom` with a clear "join failed" log.
+- Scene change: `Multiplayer.unity` Bootstrap GameObject now also has the `LinkShareUI` component.
+
+**Slice 3 validation outcome:**
+- Single-editor host: share bar appears at top of Game view as expected; clicking Copy logs `Copied to clipboard: (editor) ?room=XXXXXX` and clipboard receives the same string.
+- Two-peer (ParrelSync): host pastes share string into clone's `editorRoomOverride`; clone's override-parser logs `Editor override: will join room 'XXXXXX'`; clone connects, both players spawn. Host's share bar auto-hides once clone joins. ✓
+- One transient Photon `wss://` disconnect during retesting (not config-related, cleared on the next Play). Worth noting: PUN in Editor uses WebSocket transport on this setup, not the older UDP path.
+
+**Out-of-scope problems the user surfaced (good to flag for Slice 4):**
+- **Position not replicated.** PhotonView on the prefab makes PUN aware of the spawned object, but doesn't sync its transform. Slice 4 needs a `PhotonTransformView` (or `IPunObservable` on a custom controller) to stream position/rotation.
+- **Local input drives both players.** Both prefabs have `KeyboardController` attached; each peer's local hardware moves both Players locally. Slice 4 fixes this by gating input by `photonView.IsMine` — the existing `Controller` polymorphism is the seam (per AGENT_CONTEXT's "Architecture seams" section).
+- **`PlayerManager.shoot` NullRefs in `Multiplayer.unity`** because no `GameManager` is in this scene. Confirmed harmless if you don't shoot; Slice 4 or 5 will need either a GameManager in the scene or a guard in PlayerManager.
+
+**State left behind:**
+- Branch `Multiplayer`. Slice 2 commit `d882fd95` is on `origin/Multiplayer` (pushed). Slice 3 not yet committed at time of this log write — about to be.
+- Working tree dirty for the Slice 3 commit:
+  - New: `Assets/scripts/Multiplayer/LinkShareUI.cs` (+ `.meta`)
+  - Modified: `Assets/scripts/Multiplayer/MultiplayerBootstrap.cs` (tolerant override parsing)
+  - Modified: `Assets/Scenes/Multiplayer.unity` (LinkShareUI on Bootstrap)
+  - Modified: `AGENT_CONTEXT.md` (this entry)
+- Lingering working-tree carryover from prior sessions still not committed: `UserSettings/EditorUserSettings.asset` and the older `level_2.unity` / `start_scene_2.unity` / lighting outputs / SceneTemplate&Timeline settings. User has been deliberately leaving these uncommitted across sessions; do not include in this commit.
+
+**Next agent should:**
+1. **Acknowledge context-warning convention in first message** (per Working agreement #2).
+2. Confirm with user that the Slice 3 commit landed and was pushed.
+3. Start **Slice 4 (networked input)** per the revised plan: add `Assets/scripts/Controllers/NetworkController : Controller` that returns inputs received over the network. On the local Player (where `photonView.IsMine == true`), the existing `KeyboardController` and `PS4Controller` keep working AND their inputs are streamed via `PhotonView.RPC` or `IPunObservable` on a small companion script. On the remote Player (`photonView.IsMine == false`), disable the local controllers (or make them no-op) and let `NetworkController` provide inputs from the replicated stream. Use the `Controller` polymorphism — per "Architecture seams," do NOT modify `PlayerManager`. Probably the smallest path is: add `PhotonTransformView` to the prefabs for transform sync (PUN built-in component, drag in Editor), and a `PhotonInputView : MonoBehaviourPun, IPunObservable` that owns input replication. Then `NetworkController.Update` reads from `PhotonInputView`'s most-recent received inputs.
+4. **WebGL still parked.** Don't burn another session on it without searching Photon forums for the `b163`/`nullFunc_vi` signature first.
+
+---
+
 ### 2026-05-01 — Slice 2 validated host-side and committed; pivoted to BlackPlayer/WhitePlayer prefabs; LMDB scare from concurrent Editors
 
 **Agent session goal:** Push the 3 local commits, commit the Multiplayer scene rename, then implement and validate Slice 2 (color assignment).
