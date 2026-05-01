@@ -119,11 +119,13 @@ Plumb a single host-authoritative session: host owns one color, joiner auto-assi
 When you (a future agent) work on this repo:
 
 1. **First action of every session:** read this file end-to-end.
-2. **Verify before trusting:** facts here can go stale. Before acting on a claim (file path, branch state, package presence), spot-check it.
-3. **Confirm scope with the user before installing a networking package** or making sweeping changes — this branch is exploratory, not production.
-4. **Keep edits minimal and on-branch.** Don't merge to master. Don't force-push.
-5. **Last action of every session:** append an entry to "Update log" below (newest at the top of the log). Even if you accomplished nothing, log what you tried and what blocked you. Future-you needs the negative results too.
-6. **If this file gets long (>300 lines):** compress old log entries into a single "Older history" summary block at the bottom, but keep the last ~10 entries verbatim.
+2. **Acknowledge the context-limit warning convention** in your first message of the session. The user wants to hear: "I'll watch context and warn you ~3-5 messages before exhaustion." A prior session was wiped by limits mid-implementation; this convention exists so the user always has time to ask for a final AGENT_CONTEXT.md update before the cut-off. Don't wait for the last turn — surface the warning when you estimate 3-5 turns of usable context remain.
+3. **Verify before trusting:** facts here can go stale. Before acting on a claim (file path, branch state, package presence), spot-check it. The prior agent claimed `Player.prefab` was the gameplay player; turned out to be a dead/unused template — actual prefabs are `BlackPlayer.prefab` and `WhitePlayer.prefab`. Always grep scenes for prefab GUID references before basing work on a doc claim.
+4. **One Unity Editor at a time** when doing file moves via shell. ParrelSync clones share `Library/` via symlink; if both Editors are open during a `git mv`, Unity's LMDB asset database trips assertion failures (`MDB_MAP_RESIZED`, "Asset database transaction committed twice!"). Recovery is usually a clean Unity restart with only one Editor open; nuking `Library/` is the last resort.
+5. **Confirm scope with the user before installing a networking package** or making sweeping changes — this branch is exploratory, not production.
+6. **Keep edits minimal and on-branch.** Don't merge to master. Don't force-push.
+7. **Last action of every session:** append an entry to "Update log" below (newest at the top of the log). Even if you accomplished nothing, log what you tried and what blocked you. Future-you needs the negative results too.
+8. **If this file gets long (>300 lines):** compress old log entries into a single "Older history" summary block at the bottom, but keep the last ~10 entries verbatim.
 
 ### Update log entry format
 
@@ -141,6 +143,48 @@ When you (a future agent) work on this repo:
 ## Update log
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
+
+### 2026-05-01 — Slice 2 validated host-side and committed; pivoted to BlackPlayer/WhitePlayer prefabs; LMDB scare from concurrent Editors
+
+**Agent session goal:** Push the 3 local commits, commit the Multiplayer scene rename, then implement and validate Slice 2 (color assignment).
+
+**What got done:**
+- **Committed scene rename** `Multiplayer .unity` → `Multiplayer.unity` (commit `f7d86a6a`).
+- **User pushed all 4 local commits** to `origin/Multiplayer`. Origin and local are in sync as of session start of Slice 2 work.
+- **Slice 2 first attempt (reverted):** moved `Player.prefab` → `Resources/`, wrote `NetworkPlayerInit.cs` (an `IPunInstantiateMagicCallback` to set framework via PUN instantiation data), wrote `MultiplayerSpawner.cs` to instantiate `Player.prefab` with framework as data, extended `MultiplayerBootstrap.cs` with `[SerializeField] Framework hostColor` field that's stored as a custom room property on `CreateRoom`.
+- **Discovered `Player.prefab` is dead.** Grepped all scenes by GUID — `Player.prefab` (guid `c808ace7...`) has **0 references anywhere**. The actual gameplay prefabs are `Assets/Prefabs/players/BlackPlayer.prefab` (guid `1c1fbaec...`) and `WhitePlayer.prefab` (guid `66aec441...`), used 10+ times each across `level_1..5`, `start_scene_2`, `level_test`, `level_skeleton`, `level_ori`. The prior agent's plan to use `Player.prefab` as a generic template was based on an unverified assumption.
+- **LMDB asset DB scare:** during the prefab move, Unity console flooded with `Assertion failed on expression: 'errors == MDB_SUCCESS || errors == MDB_NOTFOUND'`, `MDB_MAP_RESIZED`, and `Asset database transaction committed twice!` — caused by ParrelSync clone Editor still being open from prior session, sharing `Library/` via symlink. **Recovery: close clone, fully quit Unity, reopen.** Errors cleared on restart. Only remaining error was a harmless stale "Recent Scenes" menu entry pointing at the old `Multiplayer .unity` filename.
+- **Slice 2 pivot (current state):** reverted `Player.prefab` back to `Assets/Prefabs/`. Moved `BlackPlayer.prefab` + `WhitePlayer.prefab` (and `.meta` files) to `Assets/Resources/`. Deleted `NetworkPlayerInit.cs` (no longer needed — frameworks are baked into the separate prefabs). Rewrote `MultiplayerSpawner.cs` to call `PhotonNetwork.Instantiate("BlackPlayer" or "WhitePlayer", ...)` based on derived color (master takes `hostColor`, joiner takes opposite). `MultiplayerBootstrap.cs` extension is unchanged.
+- **Plan revision per user:** the original Slice 5 (link-share UI) is being promoted earlier. New agreed sequence: Slice 2 (colors) → Slice 3 (link-share UI) → Slice 4 (networked input) → Slice 5 (spawn/kill events). Reason: link-share UI is the highest-leverage user-facing feature; currently the room URL is only logged to console.
+- **Memory + AGENT_CONTEXT additions:** added a feedback memory at `~/.claude/projects/.../memory/feedback_context_limit_warning.md` recording the user's preference to be warned 3-5 messages before context exhaustion, and added items #2 (context warning) and #4 (one-Editor-at-a-time during shell file moves) to the Working Agreement above.
+
+**State left behind:**
+- Branch `Multiplayer`, **synced with `origin/Multiplayer`** at last push (commit `f7d86a6a`).
+- Working tree dirty (Slice 2 NOT yet committed):
+  - Renamed (staged): `Assets/Prefabs/players/{BlackPlayer,WhitePlayer}.prefab` + `.meta` → `Assets/Resources/`
+  - Modified (unstaged): `Assets/scripts/Multiplayer/MultiplayerBootstrap.cs` (added `hostColor` field + custom room prop)
+  - New (untracked): `Assets/scripts/Multiplayer/MultiplayerSpawner.cs` + `.meta`
+  - Also lingering from older sessions and not committed: `Assets/Scenes/level_2.unity` and `start_scene_2.unity` modifications, `*Settings.lighting` outputs, `UserSettings/EditorUserSettings.asset`, `ProjectSettings/{ProjectSettings.asset,SceneTemplateSettings.json,TimelineSettings.asset}`. Same status as prior session — left for user to decide.
+- **Editor work completed this session:**
+  1. PhotonView added to `Assets/Resources/BlackPlayer.prefab` and `WhitePlayer.prefab`.
+  2. `Multiplayer.unity` scene now has: `Bootstrap` GameObject (with `MultiplayerBootstrap` + `MultiplayerSpawner`), `Main Camera` prefab, `floor` prefab at position (0, -2, 0). User chose to keep the floor's existing Kinematic Rigidbody2D (default for the prefab — Static would have been a needless override).
+- **Slice 2 validation outcome:**
+  - Single-editor Play (host): logs `Connecting → Connected to master (eu) → Hosting room 'XXXXXX' as BLACK → Spawned local 'BlackPlayer' as BLACK at (-3, 1) → Joined as actor #1 (1/2)`. Black player spawned and landed on floor. ✓
+  - Two-peer (ParrelSync clone) — host editor saw both players with correct colors after clone joined. **The clone-side Game view appeared empty initially** — root cause was the clone's Editor having loaded `Multiplayer.unity` in memory before the host added Camera + floor; ParrelSync symlinks `Assets/` so disk state was current, but the in-memory scene was stale. User chose to delete the existing clone and create a fresh one rather than reload the scene file (safer-over-faster preference for Unity 2020.3 — see memory `feedback_unity_2020_safer_path.md`). Pending verification of the fresh clone showing both players.
+- WebGL still parked/broken (per prior sessions). Not touched.
+
+**What's blocked or unclear:**
+- Whether `BlackPlayer.prefab` and `WhitePlayer.prefab` are structurally identical except for `player_framework` and color settings — didn't verify exhaustively. If they differ in scripts/colliders, Slice 3+ networked input may need different handling per prefab.
+- Whether `PlayerManager.Awake`'s `GetComponentInParent<GameManager>()` returning null in `Multiplayer.unity` (no GameManager in scene) will cause issues beyond shooting/pause/death paths. Movement-only validation should be safe.
+- Whether to delete the now-orphaned `Assets/Prefabs/Player.prefab` (it's unused everywhere). Recommend leaving it for now — it's outside the slice's scope.
+
+**Next agent should:**
+1. **Acknowledge context-warning convention in first message** (per Working agreement #2).
+2. Confirm with user that the fresh-clone two-peer test now shows both players correctly in the clone's Game view too (host-side already validated). If something off, fix and amend; otherwise nothing more to do for Slice 2.
+3. Then start **Slice 3 (link-share UI)** per the revised plan: a UI button on the host that copies the share URL (currently only logged to console) to the OS clipboard, and a visible text field showing the URL. Probably extend `Multiplayer.unity` with a Canvas + Button + Text. Cross-platform clipboard: `GUIUtility.systemCopyBuffer = url;` works on WebGL and desktop in Unity 2020.
+4. **WebGL still parked.** Don't burn another session on it without searching Photon forums for the `b163`/`nullFunc_vi` signature first.
+
+---
 
 ### 2026-05-01 — Slice 1 fully validated two-peer; ParrelSync embedded + patched
 

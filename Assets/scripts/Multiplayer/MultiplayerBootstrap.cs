@@ -1,18 +1,22 @@
 using System;
+using ExitGames.Client.Photon;
+using Game;
 using Photon.Pun;
 using Photon.Realtime;
 using UnityEngine;
 
 namespace Multiplayer
 {
-    // Slice 1 of the multiplayer integration plan: connect two peers into the
-    // same Photon room, no gameplay yet. See AGENT_CONTEXT.md.
+    // Slice 1 + 2 of the multiplayer integration plan. See AGENT_CONTEXT.md.
     //
     // Drop this on a single GameObject in a scene. On Start it:
     //   - connects to Photon using PhotonServerSettings
     //   - on the host (no ?room=XYZ in the URL) creates a fresh room and logs
-    //     the share URL
+    //     the share URL; the room is tagged with hostColor as a custom property
     //   - on the joiner (?room=XYZ present) joins that room
+    //
+    // MultiplayerSpawner reads hostColor and instantiates the Player prefab
+    // for each peer with the correct Framework.
     public class MultiplayerBootstrap : MonoBehaviourPunCallbacks
     {
         private const string RoomParam = "room";
@@ -20,6 +24,10 @@ namespace Multiplayer
         [Header("Editor-only join override")]
         [Tooltip("In the Editor, set this on the joiner instance to the room code logged by the host. Leave empty to host. Ignored in WebGL builds (URL ?room= takes over there).")]
         [SerializeField] private string editorRoomOverride = "";
+
+        [Header("Host color choice")]
+        [Tooltip("Color the host takes when creating the room. The joiner takes the opposite. Ignored on the joiner side.")]
+        [SerializeField] private Framework hostColor = Framework.BLACK;
 
         private string pendingRoomToJoin;
         private string joinSource;
@@ -59,8 +67,18 @@ namespace Multiplayer
             }
 
             string roomName = GenerateRoomCode();
-            var options = new RoomOptions { MaxPlayers = 2, IsVisible = false, IsOpen = true };
-            Debug.Log($"[Multiplayer] Hosting new room '{roomName}'.");
+            var options = new RoomOptions
+            {
+                MaxPlayers = 2,
+                IsVisible = false,
+                IsOpen = true,
+                CustomRoomProperties = new Hashtable
+                {
+                    { MultiplayerSpawner.HostColorProperty, (int)hostColor }
+                },
+                CustomRoomPropertiesForLobby = new[] { MultiplayerSpawner.HostColorProperty }
+            };
+            Debug.Log($"[Multiplayer] Hosting new room '{roomName}' as {hostColor}.");
             PhotonNetwork.CreateRoom(roomName, options);
         }
 
