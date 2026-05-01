@@ -17,7 +17,12 @@ namespace Multiplayer
     {
         private const string RoomParam = "room";
 
+        [Header("Editor-only join override")]
+        [Tooltip("In the Editor, set this on the joiner instance to the room code logged by the host. Leave empty to host. Ignored in WebGL builds (URL ?room= takes over there).")]
+        [SerializeField] private string editorRoomOverride = "";
+
         private string pendingRoomToJoin;
+        private string joinSource;
 
         private void Start()
         {
@@ -28,6 +33,15 @@ namespace Multiplayer
             }
 
             pendingRoomToJoin = ReadRoomFromUrl(Application.absoluteURL);
+            joinSource = string.IsNullOrEmpty(pendingRoomToJoin) ? null : "URL";
+#if UNITY_EDITOR
+            if (string.IsNullOrEmpty(pendingRoomToJoin) && !string.IsNullOrEmpty(editorRoomOverride))
+            {
+                pendingRoomToJoin = editorRoomOverride.Trim();
+                joinSource = "editor override";
+                Debug.Log($"[Multiplayer] Editor override: will join room '{pendingRoomToJoin}'.");
+            }
+#endif
             PhotonNetwork.GameVersion = Application.version;
             PhotonNetwork.ConnectUsingSettings();
             Debug.Log("[Multiplayer] Connecting to Photon...");
@@ -39,7 +53,7 @@ namespace Multiplayer
 
             if (!string.IsNullOrEmpty(pendingRoomToJoin))
             {
-                Debug.Log($"[Multiplayer] Joining room '{pendingRoomToJoin}' from URL.");
+                Debug.Log($"[Multiplayer] Joining room '{pendingRoomToJoin}' (from {joinSource}).");
                 PhotonNetwork.JoinRoom(pendingRoomToJoin);
                 return;
             }

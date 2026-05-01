@@ -142,7 +142,41 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
-### 2026-04-30 — Slice 1 code complete (Editor-verified); WebGL build aborts at runtime in Photon WS callback
+### 2026-05-01 — Slice 1 fully validated two-peer; ParrelSync embedded + patched
+
+**Agent session goal:** Per yesterday's exit plan: install ParrelSync, prove two-peer connect Editor-to-Editor, then start Slice 2. Got through the validation; Slice 2 not started this session.
+
+**What got done:**
+- **Installed ParrelSync** (free Unity package). UPM git-URL install needed `?path=/ParrelSync` because the package manifest lives in a subdirectory of the repo, not at root.
+- **Patched ParrelSync's `Editor/Preferences.cs` line 91** — the upstream master uses `string.Split(string)`, which is .NET Standard 2.1 / .NET Core 2.1+ only. Unity 2020.3 ships with neither (.NET 4.x's Mono on this version doesn't have it either, so the API-level switch this session didn't help — confirmed empirically). Replaced with `Split(new[] { token }, StringSplitOptions.None)`, which works on .NET Standard 2.0+. Added `using System;` for `StringSplitOptions`.
+- **Embedded the package**: copied from `Library/PackageCache/com.veriorpies.parrelsync@610157ad76/` to `Packages/com.veriorpies.parrelsync/`, and changed the `Packages/manifest.json` entry from the git URL to `file:com.veriorpies.parrelsync`. This makes the patch survive package reimports and gives anyone cloning the repo a working ParrelSync without re-doing the patch.
+- **Created clone via ParrelSync menu → Clones Manager → Add new clone**. Clone landed at `../super-inverters-game-clone-0/` (sibling dir, symlinked Library/).
+- **Added `editorRoomOverride` `[SerializeField]` to `MultiplayerBootstrap`**, gated by `#if UNITY_EDITOR`. In the Editor, `Application.absoluteURL` is empty so URL-based join doesn't work — this field lets the joiner instance be told the room code via Inspector. Ignored in WebGL builds (URL still wins there).
+- **Tightened the join log message**: now says `(from URL)` or `(from editor override)` instead of the misleading `from URL.` it always said.
+- **Validated Slice 1 end-to-end**: host (original Editor) created room `D8432F` and logged the share URL. Joiner clone with `editorRoomOverride = "D8432F"` connected, joined, became actor #2. Host received `OnPlayerEnteredRoom` callback; clone received `OnJoinedRoom`. Both consoles logged `2/2 players`. **Slice 1 is now genuinely complete and team-testable.**
+
+**State left behind:**
+- Branch `Multiplayer`. Yesterday's Slice 1 commit (`9b1ed6db`) is still **1 commit ahead of `origin/Multiplayer`, not pushed**. Today's commit makes that **2 ahead**.
+- This commit bundles: `MultiplayerBootstrap.cs` (editor override + log fix), `Packages/manifest.json` + `Packages/packages-lock.json` (file: path), `Packages/com.veriorpies.parrelsync/` (33 files, ~176 KB — patched ParrelSync), `Assets/Plugins/ParrelSync/` (12 KB ParrelSync project-settings asset), and this AGENT_CONTEXT.md entry.
+- **Skipped from commit (left in working tree, user's call):** `Assets/Scenes/level_2.unity` and `start_scene_2.unity` modifications and their `*Settings.lighting` bake outputs, `UserSettings/EditorUserSettings.asset`, `ProjectSettings/{ProjectSettings.asset,SceneTemplateSettings.json,TimelineSettings.asset}`. ProjectSettings.asset specifically may contain today's API Compatibility Level toggle to .NET 4.x (which we tried for ParrelSync and abandoned in favor of the patch); not committing leaves the user free to decide.
+- WebGL still broken — same dead-ends from yesterday. Not touched this session.
+- The trailing-space scene filename `Multiplayer .unity` still not renamed. Easy in-Editor whenever the user gets to it.
+
+**What's blocked or unclear:**
+- Whether to push the 2 local commits to `origin/Multiplayer` now or wait until Slice 2 lands.
+- Whether to commit ProjectSettings.asset (the .NET 4.x toggle) separately. Affects WebGL targets only; doesn't matter for Editor work.
+
+**Next agent should:**
+1. Confirm with user: push or wait?
+2. Start **Slice 2 (color assignment)** — the next item in "Planned multiplayer integration":
+   - Add a "Host as Black" / "Host as White" button (or flag) so the host picks their color before creating the room.
+   - On `CreateRoom`, set a `hostColor` custom room property.
+   - On the joiner side in `OnJoinedRoom`, read `hostColor` and take the opposite — assign that color to the local player.
+   - Each peer instantiates exactly one Player from `Assets/Prefabs/Player.prefab` via `PhotonNetwork.Instantiate`, with the right `Framework` set on its `PlayerState`.
+   - Verify with two ParrelSync Editors: both Players appear on both screens, with the right colors. **Don't touch `PlayerManager` or `GameManager` yet.**
+3. Slice 2 is mostly Photon Custom Properties + a small UI tweak to the multiplayer scene. The existing `MultiplayerBootstrap` is a good place to extend, or create a sibling `MultiplayerSpawner` if it gets crowded.
+
+
 
 **Agent session goal:** User implemented Slice 1 (`MultiplayerBootstrap` + scene + Build Settings flip), verified it works in the Unity Editor, and tried to ship a WebGL build. Agent's role: post-hoc documentation, then attempted WebGL fixes (none of which worked). Net outcome: Slice 1 is real and Editor-runnable; WebGL is blocked.
 
