@@ -301,6 +301,9 @@ GameObject:
   - component: {fileID: 50574653275153924}
   - component: {fileID: 61125705487665224}
   - component: {fileID: -6152906292993125682}
+  - component: {fileID: 8316466708782842359}
+  - component: {fileID: 6128243635514895138}
+  - component: {fileID: 4113455482322663690}
   m_Layer: 17
   m_Name: BlackPlayer
   m_TagString: player
@@ -525,13 +528,60 @@ MonoBehaviour:
   ObservedComponentsFoldoutOpen: 1
   Group: 0
   prefixField: -1
-  Synchronization: 3
+  Synchronization: 2
   OwnershipTransfer: 0
   observableSearch: 2
-  ObservedComponents: []
+  ObservedComponents:
+  - {fileID: 8316466708782842359}
   sceneViewId: 0
   InstantiationId: 0
   isRuntimeInstantiated: 0
+--- !u!114 &8316466708782842359
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bde037a8e6064f608d3aa74babde142f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &6128243635514895138
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 36982a1b847f46a2918909028b70a921, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneName: 
+  StartScene: start_scene_2
+  inStartScene: 0
+  movingDirection: {x: 0, y: 0}
+  aimDirection: {x: 0, y: 0}
+--- !u!114 &4113455482322663690
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c45c4de8eee049b0ae0f0fe3c40c0deb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneName: 
+  StartScene: start_scene_2
+  inStartScene: 0
+  movingDirection: {x: 0, y: 0}
+  aimDirection: {x: 0, y: 0}
 --- !u!1 &1291081427228662
 GameObject:
   m_ObjectHideFlags: 0

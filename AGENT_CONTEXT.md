@@ -144,6 +144,128 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
+### 2026-05-03 — Slice 4 unblocked; networked input + transform sync working two-peer
+
+**Agent session goal:** Resolve the in-sky bug from yesterday's Slice 4 entry and finish multiplayer controls.
+
+**What got resolved:**
+- **Diagnostic confirmed `OnPhotonInstantiate` fires correctly** and `Rigidbody2D.simulated = false` is being applied on remotes. Yesterday's hypothesis (callback not firing) was wrong; logs showed `IsMine=False rb=True bodyType=Kinematic simulated=False` exactly when expected. The body still drifted to Y=1097 anyway.
+- **Real cause: PhotonTransformView's prediction logic was misbehaving on the host side.** Hard to be certain whether it was stream alignment with PhotonInputView's IPunObservable or something inside PhotonTransformView's `m_NetworkPosition += m_Direction * lag` extrapolation, but the symptom was reproducible: joiner reports Y=2.09, host's view drifts to Y=46–1097 over time, and corrects only when the joiner moves enough to send a fresh "On Change" packet.
+- **Fix: replaced PhotonTransformView entirely with position handling inside PhotonInputView.** PhotonInputView now owns the whole stream (Vec2 aim + 4 button bools + Vec3 position), and on the remote it does `transform.position = Vector3.Lerp(transform.position, _remotePosition, Time.deltaTime * 15f)` in `Update`. Single IPunObservable, no alignment risk, no built-in prediction to fight. **PhotonTransformView component removed from both prefabs.**
+- **PhotonView Synchronization changed from `Unreliable On Change` (3) to `Unreliable` (2)** on both prefabs. With "On Change", packets were suppressed while the joiner was idle, so newly-spawned remotes had no position data. With plain "Unreliable", every serialization tick streams position regardless.
+- **Inadvertent prefab body-type modification reverted again.** Same pattern as yesterday: an attempt to set the prefab Rigidbody2D to Kinematic via Unity Editor while the ParrelSync clone was open produced ParrelSync's "asset save blocked" dialog but the change had already saved on BlackPlayer. Reverted in YAML to Dynamic. Reminder for future agents: prefab edits must come from the **host** Unity Editor only — see Working Agreement #4.
+
+**New: multiplayer-only key layout (WASD / Space / Shift):**
+- New `Assets/scripts/Controllers/MultiplayerKeyboardController.cs : Controller` — uses `Input.GetKey` / `GetKeyDown` directly (no axis-name indirection). WASD for movement, Space for jump (or "get down" through platform if S is held), Shift (Left or Right) for fire, Esc for pause.
+- Default-disabled on the prefab (via Inspector checkbox) so single-player co-op is untouched.
+- `PhotonInputView.OnPhotonInstantiate` enables `MultiplayerKeyboardController` and disables `KeyboardController + PS4Controller` on the local-mine instance. On remotes, all three are disabled (NetworkController drives via replicated input).
+- PhotonInputView also samples `MultiplayerKeyboardController` in `LateUpdate` (in addition to the existing — but now disabled in MP — `KeyboardController` block).
+
+**Slice 4 validation outcome:** Confirmed two-peer:
+- Both players spawn at correct positions (host's local Black at (-3, 1) → falls to floor; joiner's local White at (3, 1) → falls to floor).
+- Host's view of WhitePlayer Y matches joiner's local Y (within Lerp catch-up window) once joiner is stationary.
+- Movement (WASD) and jump (Space) on each side moves only that side's owned player — IsMine gating works.
+- Walking-direction animation flips correctly with the axis-snap fix from yesterday (`_localAim` snapped to discrete -1 / 0 / +1, deadzone 0.2).
+- One transient `wss://` Photon disconnect during retesting (per Slice 3's log, this is a known transient flake; cleared on next Play attempt).
+- **Shooting still NullRefs** — `PlayerManager.shoot` line 311 (`_gameManager.SpawnShot`) throws because `Multiplayer.unity` has no GameManager. Confirmed harmless; deferred to Slice 5.
+
+**State left behind:**
+- Branch `Multiplayer` on user's main worktree at `/Users/nadav/Documents/GitHub/super-inverters-game/`. Working tree dirty there (NOT committed):
+  - New: `Assets/scripts/Multiplayer/PhotonInputView.cs` (+ `.meta`)
+  - New: `Assets/scripts/Controllers/NetworkController.cs` (+ `.meta`, `executionOrder: -100`)
+  - New: `Assets/scripts/Controllers/MultiplayerKeyboardController.cs` (+ `.meta`)
+  - Modified: `Assets/Resources/BlackPlayer.prefab` — 3 new components added (PhotonInputView, NetworkController, MultiplayerKeyboardController), PhotonView Synchronization changed to Unreliable, root Rigidbody2D body type back to Dynamic via YAML revert. PhotonTransformView removed (was added during the day, removed again).
+  - Modified: `Assets/Resources/WhitePlayer.prefab` — same 3 components added, PhotonView Synchronization changed to Unreliable, PhotonTransformView removed.
+  - Modified: `AGENT_CONTEXT.md` (this entry + yesterday's superseded WIP entry below)
+- `PhotonInputView.OnPhotonInstantiate` still has two `Debug.Log` diagnostic lines from yesterday — left in for one more session in case the in-sky bug recurs; should be removed before the Slice 4 commit lands.
+- Side-branch state (still local-only, NOT pushed yet — same as yesterday):
+  - `master` is 2 commits ahead of `origin/master` — `b1830198 Fixed key` (pre-existing) + `00e91e18 Add CLAUDE.md breadcrumb`.
+  - `claude/add-claude-md-pointer` (local-only): one commit `466d5e8f` on top of `origin/Multiplayer` adding CLAUDE.md.
+  - `claude/slice-4-network-input` (in `.claude/worktrees/zealous-panini-57f4e8/`): vestigial; no commits, .cs files duplicated. Delete after Slice 4 lands.
+- Push commands the user still needs to run when ready (per `feedback_user_handles_pushes.md`):
+  ```
+  git push origin master
+  git push origin claude/add-claude-md-pointer:Multiplayer
+  git branch -d claude/add-claude-md-pointer
+  cd /Users/nadav/Documents/GitHub/super-inverters-game && git pull --ff-only origin Multiplayer
+  ```
+
+**What's blocked or unclear:**
+- Why exactly PhotonTransformView misbehaved is still not pinned down — but bypassing it solved the problem, so this is curiosity-only.
+- Whether the joiner's local Y settles cleanly on the floor or hovers slightly above (yesterday's reading was Y=2.09 on the joiner with floor at ~-2). Not critical; the visual position looked fine in today's tests.
+- Shooting in `Multiplayer.unity` requires either a GameManager in the scene or a guard in `PlayerManager.shoot`. This is the entry-point for Slice 5.
+
+**Next agent should:**
+1. **Acknowledge context-warning convention in first message** (per Working agreement #2).
+2. **Confirm with user whether to commit + push Slice 4 now** before starting Slice 5. Suggested commit scope (one bundled commit on `Multiplayer`):
+   - `Assets/scripts/Multiplayer/PhotonInputView.cs` (+ `.meta`) — drop the two Debug.Log diagnostic lines first.
+   - `Assets/scripts/Controllers/NetworkController.cs` (+ `.meta`)
+   - `Assets/scripts/Controllers/MultiplayerKeyboardController.cs` (+ `.meta`)
+   - `Assets/Resources/BlackPlayer.prefab` + `Assets/Resources/WhitePlayer.prefab`
+   - `AGENT_CONTEXT.md`
+   Suggested commit message subject: `Slice 4: networked input + transform sync via PhotonInputView`.
+3. **Push the parked meta-improvement commits** (master + `claude/add-claude-md-pointer` → Multiplayer) before or after the Slice 4 commit; independent of Slice 4.
+4. Delete `claude/slice-4-network-input` branch after Slice 4 commits.
+5. Then **start Slice 5: networked spawn/kill events.** Per the original integration plan: `GameManager.SpawnShot`/`SpawnShell` need to use `PhotonNetwork.Instantiate` (or RPCs) so projectiles appear on both peers; `GameManager.PlayerKilled` becomes an RPC; `SceneManager.LoadScene` calls become `PhotonNetwork.LoadLevel`. **Prerequisite:** add a GameManager GameObject to `Multiplayer.unity` (or guard `PlayerManager.shoot`/`PlayerKilled` against null) so shooting stops NullRef'ing.
+6. **Compress old log entries.** Doc is well past 500 lines; Working Agreement #8 says to compress when >300. Suggest: keep the last ~10 entries verbatim (this entry, yesterday's WIP, Slice 3, Slice 2, Slice 1, plus the goal-confirmation entries from 2026-04-30) and fold the rest into a single "Older history" block at the bottom.
+
+---
+
+### 2026-05-02 — Slice 4 (networked input + transform sync) WIP, blocked on remote-position drift
+
+**Agent session goal:** Implement Slice 4 — networked input replication + transform sync — fixing the two limitations from Slice 3 (position not replicated, local input drives both players).
+
+**What got built (mostly working):**
+- New `Assets/scripts/Multiplayer/PhotonInputView.cs` — `MonoBehaviourPun, IPunObservable, IPunInstantiateMagicCallback`. On the local player (photonView.IsMine), samples KB inputs each LateUpdate and accumulates pressed-since-last-sync button events. Serializes `Vector2 aim` + 4 bools (jump / shoot / getDown / pauseMenu) per OnPhotonSerializeView. On the remote (`!IsMine`), `OnPhotonInstantiate` disables KeyboardController + PS4Controller and (current state of fix) sets the local Rigidbody2D's `bodyType = Kinematic` AND `simulated = false`. Caches Rigidbody/KB/PS4 refs in Awake.
+- New `Assets/scripts/Controllers/NetworkController.cs : Controller` — `executionOrder: -100` so its Update runs before PlayerManager.Update. Returns zero/false when `photonView.IsMine` to avoid polluting the local game's controller iteration. On remote, consumes pending button events from PhotonInputView once per network event (so jump() / shoot() / getDown() / pauseMenu() return true for exactly one frame per replicated press) and reads `RemoteAim` for direction values.
+- Both prefabs (`Assets/Resources/{Black,White}Player.prefab`) — user added 3 components in Editor: PhotonInputView, NetworkController, PhotonTransformView (Synchronize Position only). Photon View's `Auto Find All` picks up the two IPunObservables (PhotonTransformView + PhotonInputView).
+- **Axis-snap fix in PhotonInputView**: `_localAim` is snapped to discrete `-1 / 0 / +1` with a 0.2 deadzone before serializing. Without this, Input.GetAxis decay residuals (e.g. 0.05 mid-release) were sent and Controller.Update normalized them to magnitude-1 on the remote, causing stuck-running animations and ghost movement.
+- **PS4 polluting network — fixed by ignoring PS4 in PhotonInputView**: PS4Controller's `defaultAimToMove: 1` (set on both prefabs) forces `aim_direction()` to a spawn-direction default (`(-1, 0)` for White at x=3, `(1, 0)` for Black at x=-3) every frame. That permanently overrode any KB input in the network stream — White was permanently sending "move left." PS4 still drives the LOCAL player via PlayerManager's controller iteration; PhotonInputView just doesn't sample it for the network.
+- **Inadvertent prefab body-type change reverted**: at one point during debugging the user attempted to set BlackPlayer's prefab Rigidbody2D body type to Kinematic. ParrelSync's "Asset modifications saving blocked" dialog appeared in the clone, but the change had already saved on the prefab (root Rigidbody2D went `m_BodyType: 0 → 1`). Reverted via direct YAML edit (line 477 of `BlackPlayer.prefab`). Reminder: the safe-to-modify rule for prefabs is "host editor only, never the ParrelSync clone" — see Working Agreement #4.
+
+**Meta improvements made this session (separate from Slice 4, both committed locally, NOT yet pushed):**
+- `master` branch: new commit `00e91e18 Add CLAUDE.md breadcrumb pointing to Multiplayer's AGENT_CONTEXT.md`. Auto-loaded by Claude Code in any session on master / a worktree off master, so future agents discover the doc instead of concluding it doesn't exist (which is exactly what happened at the start of this session).
+- New local branch `claude/add-claude-md-pointer` (commit `466d5e8f`) on top of origin/Multiplayer adds a thin CLAUDE.md saying "read AGENT_CONTEXT.md end-to-end before doing anything." Designed to fast-forward into Multiplayer when pushed.
+- Push commands the user still needs to run (not done yet — agent's shell can't reach Keychain creds, see auto-memory `feedback_user_handles_pushes.md`):
+  ```
+  git push origin master
+  git push origin claude/add-claude-md-pointer:Multiplayer
+  git branch -d claude/add-claude-md-pointer
+  ```
+
+**What still doesn't work — blocked here:**
+- **Host's view of WhitePlayer remains "in the sky" after the latest fix.** Diagnostic snapshot: host-side `Transform.position.y = 62.73`, `Rigidbody2D.bodyType = Kinematic` (confirmed my IsMine path was reached), Photon View `IsMine = False (master)`. Hypothesis was: replicated jump events triggered `PlayerManager.tryToJump` which added upward velocity to the Kinematic body (no gravity to counter, body drifts up indefinitely). Applied fix: also set `_rigidbody.simulated = false` in OnPhotonInstantiate. **User reports the bug still persists** ("white glare is still in the sky"). User has not yet validated whether `simulated = false` is actually being applied at runtime or whether `OnPhotonInstantiate` is even firing on the host's view of remote White.
+- **Joiner's local WhitePlayer reads Y=2.09** (slightly above spawn 1) at one diagnostic check. Body is Dynamic with gravity scale 4 — should fall to floor (~-1.5). Possibly mid-jump during test, possibly something else. Not investigated.
+- No clean two-peer validation yet — the in-the-sky bug blocks it.
+
+**State left behind:**
+- Branch `Multiplayer` on user's main worktree at `/Users/nadav/Documents/GitHub/super-inverters-game/`. Working tree dirty there (NOT committed):
+  - New: `Assets/scripts/Multiplayer/PhotonInputView.cs` (+ `.meta`)
+  - New: `Assets/scripts/Controllers/NetworkController.cs` (+ `.meta`, `executionOrder: -100`)
+  - Modified: `Assets/Resources/BlackPlayer.prefab` — 3 new components added (PhotonInputView, NetworkController, PhotonTransformView); root Rigidbody2D body type back to Dynamic via YAML revert
+  - Modified: `Assets/Resources/WhitePlayer.prefab` — same 3 components added
+  - Modified: this `AGENT_CONTEXT.md` (this entry)
+- Side worktree at `.claude/worktrees/zealous-panini-57f4e8/` on local branch `claude/slice-4-network-input` — has a duplicate copy of the .cs/.meta files, no commits yet on the branch. Effectively redundant with the main worktree's dirty state; can be deleted once Slice 4 commits land on Multiplayer.
+- Lingering uncommitted-across-sessions files (same as prior entries): `UserSettings/EditorUserSettings.asset`, older `level_2.unity` / `start_scene_2.unity` / lighting outputs, SceneTemplate&Timeline settings. User's call.
+
+**What's blocked or unclear:**
+- Why does `simulated = false` on the host's remote-White Rigidbody2D not stop the Y drift? Two main hypotheses for next session: (a) `OnPhotonInstantiate` doesn't fire / `_rigidbody` is null at that point so the line is a no-op; (b) PhotonTransformView is doing something unexpected with position writes. Next session should add a Debug.Log inside OnPhotonInstantiate showing IsMine + bodyType + simulated to settle (a), and runtime-inspect PhotonTransformView's `m_NetworkPosition` to settle (b).
+- Whether the same bug exists on the remote Black on the joiner side. Not tested.
+- Whether `PlayerManager.shoot` NullRefs (Slice 3 carry-over from missing GameManager in Multiplayer.unity) interact with anything Slice 4 added. Not investigated.
+
+**Next agent should:**
+1. **Acknowledge context-warning convention in first message** (per Working agreement #2).
+2. **Confirm with user whether the in-sky bug still reproduces** (or if they tried more in their head overnight).
+3. **Add a Debug.Log inside `PhotonInputView.OnPhotonInstantiate`** printing `[PhotonInputView] IsMine={photonView.IsMine} rb={_rigidbody!=null} bodyType={_rigidbody?.bodyType} simulated={_rigidbody?.simulated}`. Have user run two-peer; check what gets printed for the remote White instance on the host. This will narrow down whether the callback fires and what state the Rigidbody2D ends up in.
+4. If the callback isn't firing or `_rigidbody` is null at that point — try moving the rigidbody fetch + body-type change into a deferred coroutine started from OnPhotonInstantiate, or use `info.Sender` / `photonView.transform` to fetch fresh.
+5. If the callback IS firing and simulated=false IS applied but Y still drifts — investigate PhotonTransformView's behavior (is it actually receiving updates? what's `m_NetworkPosition`?). Could also be that the `Auto Find All` runtime population isn't ordering observables consistently between host and joiner, mis-aligning the stream so PhotonTransformView reads bool fields as a Vector3 — would explain garbage Y values. Quickest test: switch to Manual on the PhotonView with explicit `[PhotonTransformView, PhotonInputView]` ordering.
+6. After Slice 4 lands cleanly, commit a single bundled commit on Multiplayer including: the two new scripts (.cs + .meta), prefab edits, this AGENT_CONTEXT entry. Then push (user runs the push). Compress the now-2-of-3 same-day 2026-05-02 entries if convenient — the doc is at ~490 lines, well past the 300-line compression threshold in Working Agreement #8.
+7. Push the meta-improvement commits (`master`, `claude/add-claude-md-pointer:Multiplayer`) — independent of Slice 4, push order doesn't matter.
+8. Delete `claude/slice-4-network-input` once Slice 4 is committed elsewhere.
+9. **WebGL still parked.** Don't burn another session on it.
+
+---
+
 ### 2026-05-02 — Slice 3 (link-share UI) implemented and validated two-peer
 
 **Agent session goal:** Build the host-side share-link UI: a small panel with the room URL and a Copy button that puts it on the OS clipboard.
