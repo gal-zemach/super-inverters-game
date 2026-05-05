@@ -50,7 +50,7 @@ namespace Controllers
 //            {
 //                lastNonZeroDirection = aimDirection;
 //            }
-            
+
             aimDirection = update_aim_direction();
             movingDirection.x = update_moving_direction();
             movingDirection = moving_direction().normalized;
