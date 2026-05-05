@@ -89,6 +89,7 @@ namespace Game{
 			_playerView = GetComponent<PlayerView>();
 
 			_gameManager = GetComponentInParent<GameManager>();
+			if (_gameManager == null) _gameManager = FindObjectOfType<GameManager>();
 			_rigidbody2D = GetComponent<Rigidbody2D>();
 
 			controllers = GetComponents<Controller>();

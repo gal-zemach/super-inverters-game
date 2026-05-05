@@ -35,7 +35,7 @@ namespace Controllers
                 _isGettingDown = false;
             }
 
-            _isShooting = Input.GetKeyDown(KeyCode.LeftShift) || Input.GetKeyDown(KeyCode.RightShift);
+            _isShooting = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             _isPaused = !inStartScene && Input.GetKeyDown(KeyCode.Escape);
 
             base.Update();

@@ -389,7 +389,7 @@ MonoBehaviour:
   minimalDoubleJumpVelocity: 17
   RegularGravityScale: 4
   FallingGravityScale: 2
-  turnsBetweenShots: 8
+  turnsBetweenShots: 15
   shellAngleRange: 10
   recoil: 0.1
   movingDirection: {x: 0, y: 0}
@@ -500,7 +500,7 @@ BoxCollider2D:
   m_IsTrigger: 0
   m_UsedByEffector: 0
   m_UsedByComposite: 0
-  m_Offset: {x: 0, y: 0}
+  m_Offset: {x: 0, y: 0.3}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0.5, y: 0.5}
