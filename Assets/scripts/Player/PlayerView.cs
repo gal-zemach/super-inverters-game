@@ -88,8 +88,16 @@ namespace Game {
 
 		public void changeCrosshairDirection(Vector2 direction)
 		{
-			crosshair.localPosition = new Vector2(direction.x / transform.localScale[0], 
-				direction.y / transform.localScale[1]) * crosshairDistance;	
+			// When the player isn't aiming/moving, direction is (0, 0) and the
+			// crosshair would sit at the player's center, hidden inside the
+			// body sprite. Fall back to the player's facing direction so the
+			// crosshair stays visible at idle.
+			if (direction == Vector2.zero)
+			{
+				direction = facingLeft ? Vector2.left : Vector2.right;
+			}
+			crosshair.localPosition = new Vector2(direction.x / transform.localScale[0],
+				direction.y / transform.localScale[1]) * crosshairDistance;
 		}
 
 		// currently copied for the demo from PlatformMangager maybe should be in one place?
@@ -97,21 +105,25 @@ namespace Game {
 		{
 			if (!showCrosshair) _crosshair_spriteRenderer.enabled = false;
 
+			// SpriteRenderer.color (per-instance tint) gets multiplied with
+			// material.color, so setting only material.color leaves the prefab's
+			// baked-in tint in charge — Black's prefab has m_Color (0,0,0,1) on
+			// its crosshair SpriteRenderer, which would clamp any material tint
+			// back to black. Setting .color directly overrides the prefab.
 			switch (framework)
 			{
 			case Framework.BLACK:
-				//				_spriteRenderer.material.color = Color.black;
-				_crosshair_spriteRenderer.material.color = Color.black;
+				// Crosshair is white (not black) so it stays visible against
+				// both the black player sprite and the gray background.
+				_crosshair_spriteRenderer.color = Color.white;
 				break;
 
 			case Framework.GREY:
-				//				_spriteRenderer.material.color = Color.grey;
-				_crosshair_spriteRenderer.material.color = Color.grey;
+				_crosshair_spriteRenderer.color = Color.grey;
 				break;
 
 			case Framework.WHITE:
-				//				_spriteRenderer.material.color = Color.white;
-				_crosshair_spriteRenderer.material.color = Color.white;
+				_crosshair_spriteRenderer.color = Color.white;
 				break;
 			}
 		}
