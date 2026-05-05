@@ -77,6 +77,25 @@ namespace Multiplayer
             return SceneManager.GetActiveScene().name == targetSceneName;
         }
 
+        // Editor-only visual feedback so you can see where players will spawn
+        // without running the game. Drawn as solid spheres in the player color
+        // surrounded by a brighter wire sphere for visibility against any
+        // background. Compiled out of player builds automatically.
+        private void OnDrawGizmos()
+        {
+            DrawSpawnGizmo(blackSpawnPosition, Color.black);
+            DrawSpawnGizmo(whiteSpawnPosition, Color.white);
+        }
+
+        private static void DrawSpawnGizmo(Vector2 position, Color fill)
+        {
+            Vector3 p = new Vector3(position.x, position.y, 0f);
+            Gizmos.color = fill;
+            Gizmos.DrawSphere(p, 0.35f);
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawWireSphere(p, 0.45f);
+        }
+
         private void TrySpawn()
         {
             if (spawned) return;
