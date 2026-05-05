@@ -78,22 +78,34 @@ namespace Multiplayer
         }
 
         // Editor-only visual feedback so you can see where players will spawn
-        // without running the game. Drawn as solid spheres in the player color
-        // surrounded by a brighter wire sphere for visibility against any
-        // background. Compiled out of player builds automatically.
+        // without running the game. Compiled out of player builds automatically.
         private void OnDrawGizmos()
         {
-            DrawSpawnGizmo(blackSpawnPosition, Color.black);
-            DrawSpawnGizmo(whiteSpawnPosition, Color.white);
+            DrawSpawnGizmo(blackSpawnPosition, Color.black, "BLACK SPAWN");
+            DrawSpawnGizmo(whiteSpawnPosition, Color.white, "WHITE SPAWN");
         }
 
-        private static void DrawSpawnGizmo(Vector2 position, Color fill)
+        private static void DrawSpawnGizmo(Vector2 position, Color fill, string label)
         {
             Vector3 p = new Vector3(position.x, position.y, 0f);
+
+            // Solid colored sphere at the spawn point.
             Gizmos.color = fill;
-            Gizmos.DrawSphere(p, 0.35f);
+            Gizmos.DrawSphere(p, 0.5f);
+
+            // Yellow wire ring around it for contrast against any background.
             Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(p, 0.45f);
+            Gizmos.DrawWireSphere(p, 0.6f);
+
+            // Vertical drop line indicating "player falls here onto whatever
+            // is below" — helps when you're aligning to a platform.
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(p, p + Vector3.down * 2f);
+
+#if UNITY_EDITOR
+            UnityEditor.Handles.color = Color.yellow;
+            UnityEditor.Handles.Label(p + new Vector3(0.7f, 0.5f, 0f), label);
+#endif
         }
 
         private void TrySpawn()
