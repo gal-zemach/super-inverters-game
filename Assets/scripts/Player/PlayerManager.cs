@@ -235,7 +235,15 @@ namespace Game{
 			if (!aimDirChanged) shootingDirection = movingDirection;
 
 			// updating animation parameters
-			_playerView.vertical_dir = shootingDirection.y;
+			// vertical_dir is the aim's "verticalness" in [-1, 1] — the angle
+			// from horizontal, normalized to ±π/2. Using the angle (rather than
+			// raw shootingDirection.y) lets keyboard W+A produce 0.5 (up-diag)
+			// instead of 1.0 (up), so the up_diag/down_diag animation buckets
+			// actually trigger for keyboard input.
+			if (shootingDirection == Vector2.zero)
+				_playerView.vertical_dir = 0f;
+			else
+				_playerView.vertical_dir = Mathf.Atan2(shootingDirection.y, Mathf.Abs(shootingDirection.x)) / (Mathf.PI / 2f);
 			_playerView.isMoving = isGrounded && !Mathf.Approximately(movingDirection.x, 0);
 			if (Mathf.Approximately(shootingDirection.x, 0)) _playerView.horizontal_dir = 0;
 			else _playerView.horizontal_dir = (int) Mathf.Sign(shootingDirection.x);
@@ -305,6 +313,15 @@ namespace Game{
 		{
 			if (_timesSinceFired > 0) return;
 			_timesSinceFired = turnsBetweenShots;
+
+			// When the player is standing still with no aim input, `direction`
+			// is (0, 0) and GetAngle returns 0 → shot fires Vector2.right.
+			// Fall back to the player's current facing so the shot goes the
+			// way the sprite is pointing.
+			if (direction == Vector2.zero)
+			{
+				direction = _playerView.facingLeft ? Vector2.left : Vector2.right;
+			}
 
 			Vector2 pos = _rigidbody2D.position;
 			if (EnableSFX) _sfx.PlayShoot();
