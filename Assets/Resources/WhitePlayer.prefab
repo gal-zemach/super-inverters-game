@@ -545,7 +545,7 @@ MonoBehaviour:
   JoystickNumber: 1
   JumpUsingVerticalMovement: 0
   AimWithMovement: 1
-  defaultAimToMove: 1
+  defaultAimToMove: 0
   AutoFire: 1
   AutoJumping: 0
   HorizontalMovementControls:
