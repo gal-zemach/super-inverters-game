@@ -4,6 +4,7 @@ using Game;
 using Photon.Pun;
 using Photon.Realtime;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Multiplayer
 {
@@ -28,6 +29,10 @@ namespace Multiplayer
         [Header("Host color choice")]
         [Tooltip("Color the host takes when creating the room. The joiner takes the opposite. Ignored on the joiner side.")]
         [SerializeField] private Framework hostColor = Framework.BLACK;
+
+        [Header("Game scene")]
+        [Tooltip("Scene to load via PhotonNetwork.LoadLevel once both peers are in the room. Leave empty to skip loading (single-scene flow).")]
+        [SerializeField] private string gameSceneName = "level_1-multiplayer";
 
         private string pendingRoomToJoin;
         private string joinSource;
@@ -98,11 +103,34 @@ namespace Multiplayer
             {
                 Debug.Log($"[Multiplayer] Share this URL with a friend: {BuildShareUrl(room)}");
             }
+
+            // If we joined a room that's already full (e.g. master is alone in
+            // the lobby waiting and the joiner just connected), the master may
+            // need to trigger LoadLevel. Joiner case is handled below in
+            // OnPlayerEnteredRoom on the master side.
+            TryLoadGameScene();
         }
 
         public override void OnPlayerEnteredRoom(Player newPlayer)
         {
             Debug.Log($"[Multiplayer] Player joined: actor #{newPlayer.ActorNumber}. Room now {PhotonNetwork.CurrentRoom.PlayerCount}/{PhotonNetwork.CurrentRoom.MaxPlayers}.");
+            TryLoadGameScene();
+        }
+
+        // Master client transitions both peers from the lobby scene to the
+        // game scene once the room is full. Joiner gets the LoadLevel call
+        // auto-synced by PUN. No-op if we're already in the game scene, if
+        // we're not master, if the room isn't full yet, or if no game scene
+        // is configured.
+        private void TryLoadGameScene()
+        {
+            if (!PhotonNetwork.IsMasterClient) return;
+            if (string.IsNullOrEmpty(gameSceneName)) return;
+            if (PhotonNetwork.CurrentRoom.PlayerCount < PhotonNetwork.CurrentRoom.MaxPlayers) return;
+            if (SceneManager.GetActiveScene().name == gameSceneName) return;
+
+            Debug.Log($"[Multiplayer] Room full. Loading game scene '{gameSceneName}'.");
+            PhotonNetwork.LoadLevel(gameSceneName);
         }
 
         public override void OnPlayerLeftRoom(Player otherPlayer)

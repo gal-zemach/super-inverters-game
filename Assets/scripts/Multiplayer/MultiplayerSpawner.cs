@@ -3,6 +3,7 @@ using Game;
 using Photon.Pun;
 using Photon.Realtime;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Multiplayer
 {
@@ -36,19 +37,44 @@ namespace Multiplayer
         [Tooltip("World position used when spawning the WHITE player.")]
         [SerializeField] private Vector2 whiteSpawnPosition = new Vector2(3f, 1f);
 
+        [Tooltip("Only spawn when this scene is active. Prevents the lobby Bootstrap (which is also a copy of this) from spawning a player that PhotonNetwork.LoadLevel would immediately destroy.")]
+        [SerializeField] private string targetSceneName = "level_1-multiplayer";
+
         private bool spawned;
+
+        private void Start()
+        {
+            // Post-LoadLevel case: we're now in the game scene, already in a
+            // room. OnJoinedRoom won't fire here, so kick off the spawn from
+            // Start instead.
+            if (PhotonNetwork.InRoom && IsInTargetScene())
+            {
+                TrySpawn();
+            }
+        }
 
         public override void OnJoinedRoom()
         {
-            TrySpawn();
+            // Only spawn when we're in the game scene. In the lobby scene this
+            // is a no-op; the master will load the game scene when both peers
+            // are present, and Start above will fire spawn there.
+            if (IsInTargetScene())
+            {
+                TrySpawn();
+            }
         }
 
         public override void OnRoomPropertiesUpdate(Hashtable propertiesThatChanged)
         {
-            if (propertiesThatChanged != null && propertiesThatChanged.ContainsKey(HostColorProperty))
+            if (propertiesThatChanged != null && propertiesThatChanged.ContainsKey(HostColorProperty) && IsInTargetScene())
             {
                 TrySpawn();
             }
+        }
+
+        private bool IsInTargetScene()
+        {
+            return SceneManager.GetActiveScene().name == targetSceneName;
         }
 
         private void TrySpawn()
