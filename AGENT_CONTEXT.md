@@ -144,6 +144,68 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
+### 2026-05-06 — Multi-bug pass + Slice 5 phase 2a (lobby→level scene transition)
+
+**Agent session goal:** Resume after Slice 4. User flagged a hover-after-landing visual; that opened a multi-hour pass through several player-mechanics bugs, then started Slice 5 of the integration plan.
+
+**What got fixed (one commit each, all on `Multiplayer`, all pushed):**
+- **`1ab6cab2` — Fix post-landing sprite hover by aligning player sprite pivots.** (Landed via master → merged into Multiplayer.) Idle and doublejump pivots had drifted from the jump/land convention; standardized all four to `{0.375, 0.61}` and flipped doublejump alignment from Center (0) to Custom (9) so the pivot is actually used. 222 sprite `.meta` files. Doublejump still has visible mismatch because the doublejump *art* (curled legs) doesn't fit the standardized pivot; deferred as art polish.
+- **`cabe644c` — Fix player snapping back to spawn-side facing on aim release.** `BlackPlayer.prefab` and `WhitePlayer.prefab` were created in Slice 2 with `defaultAimToMove=1` on the PS4Controller (Player.prefab had `=0`). With no joystick attached, PS4Controller.Update was forcing aim to `lastNonZeroFacingDirection` (initialized to face the screen center based on spawn x), overriding KeyboardController on key release. Restored to 0 on both prefabs. Bug was visible in single-player level_1 too because those scenes use these prefabs (level_1 has 11 BlackPlayer + 10 WhitePlayer refs).
+- **`3770ecd8` — Fix standing-still shoot direction + keyboard diagonal aim animations.** Two fixes in `PlayerManager`:
+  1. `PlayerManager.shoot` now falls back to `_playerView.facingLeft ? Vector2.left : Vector2.right` when `direction == Vector2.zero`. Previously, standing still + Shift → `GetAngle((0,0)) == 0` → shot fired `Vector2.right` regardless of facing.
+  2. `_playerView.vertical_dir` is now `atan2(y, |x|) / (π/2)` instead of raw `shootingDirection.y`. The animator's `animGetDirectionIndex` buckets at `±0.4` and `±0.85`; with the raw `y`, keyboard W+A produced `y=1` (always "up" bucket) so the up_diag/down_diag sprites never played. Using verticalness-angle, W+A → 0.5 → up_diag bucket. Single principled fix; helps analog stick too.
+- **`605f6419` — Crosshair: idle-fallback to facing direction, white tint for black player.**
+  1. `PlayerView.changeCrosshairDirection` falls back to `facingLeft ? left : right` when input is zero so the crosshair doesn't sit at the player's center hidden inside the body sprite.
+  2. Black player's crosshair switched from `Color.black` to `Color.white` (visibility against gray background and the black player sprite). Important detail: needed to set `_crosshair_spriteRenderer.color` (per-instance tint), not `material.color` — `material.color * .color` multiplies, and Black's prefab has the SpriteRenderer's `m_Color` baked to `(0,0,0,1)`, which would clamp any material tint back to black.
+- **`9f0ff3fe` — Fix color assignment when host disconnects and rejoins.** `MultiplayerSpawner` was `IsMasterClient ? hostColor : Opposite(hostColor)`; when the original host disconnected and rejoined, they were no longer master, so they took `Opposite(hostColor)` = same color as the joiner who'd taken Opposite originally. Now each peer claims its color via a `myFramework` player custom property at spawn; new joiners scan `PhotonNetwork.PlayerList` for an existing claim and take whichever color isn't claimed. Falls back to the old hostColor heuristic only when no one's claimed yet.
+
+**Slice 5 phase 2a — lobby→level scene transition (started, partially landed):**
+- User created `Assets/Scenes/level_1-multiplayer.unity` (a copy of `level_1.unity` with the static BlackPlayer/WhitePlayer GameObjects deleted, Bootstrap GameObject from Multiplayer scene pasted in, registered in Build Settings). Committed as user's `a27a74ba`.
+- Code-side commits on `claude/slice-5` (merged into `Multiplayer` at merge commits `35970c53` then `9fc88873`):
+  - `89bc03a4` — `MultiplayerBootstrap.TryLoadGameScene`: when room is full and we're the master client and not already in the game scene, calls `PhotonNetwork.LoadLevel(gameSceneName)` (default `"level_1-multiplayer"`). Joiner gets the LoadLevel auto-synced by PUN. `MultiplayerSpawner` gains a `targetSceneName` SerializeField guard (default `"level_1-multiplayer"`) so the same Bootstrap (copied between lobby and level scenes) only spawns in the game scene. Spawn fires from `Start` in addition to `OnJoinedRoom`, since `OnJoinedRoom` doesn't fire after a `PhotonNetwork.LoadLevel` transition.
+  - `d210c82b` + `1fc02f57` — `OnDrawGizmos` for `MultiplayerSpawner`: solid colored sphere + yellow wire ring + downward drop line + `Handles.Label` with "BLACK SPAWN" / "WHITE SPAWN" so the user can see in the Scene view (with Gizmos toggled on) where players will spawn before pressing Play, and tune positions to land on platforms.
+
+**Things tested and confirmed working in `level_1-multiplayer`:**
+- Lobby → level scene transition fires when both peers connect.
+- Both peers spawn at correct (and distinct) colors via the new `myFramework` claim mechanism.
+- Movement (WASD), jump (Space), shoot (Shift) all responsive on the local player. Animations and crosshair update correctly. Diagonal aim now triggers up_diag/down_diag sprite buckets.
+
+**Known issues left for next session (NOT YET FIXED):**
+- **Cross-peer desync after a player dies.** Currently `GameManager.waitThenReloadGame()` calls `SceneManager.LoadScene(gameSceneName)` — local-only. When one peer's player falls off-screen, only that peer reloads; the other peer continues in the old scene and sync breaks. Plus both peers' physics independently detect the death so `PlayerKilled` fires twice. **This is Slice 5 phase 2c work** (planned next):
+  - Gate `PlayerManager.OnTriggerExit2D`'s death detection by `photonView.IsMine` so each death is reported only once
+  - `GameManager.PlayerKilled` becomes an RPC (need to add a PhotonView to the Game GameObject in `level_1-multiplayer`)
+  - `SceneManager.LoadScene` swap for `PhotonNetwork.LoadLevel` (master triggers, joiner auto-syncs)
+- **Networked paint not yet implemented** (Slice 5 phase 2b). Each peer locally simulates shot-platform collisions and locally paints. Other peer doesn't see the paint event. So platforms diverge in color across peers. Plan: when a paint event happens on the shooter's machine, RPC it via a per-platform PhotonView (or a singleton NetworkPaint with platform ID).
+- **Visual shot ghosts on remote** (Slice 5 phase 2d) not implemented. Joiner doesn't see host's shots flying. Plan: RPC `(startPos, velocity, framework)` so each peer instantiates a visual-only ghost shot.
+- **Doublejump sprite pivot** still slightly off (legs-curled art doesn't fit the standardized pivot). Cosmetic art-polish, deferred.
+- **Hover/sink at edges of jump/land transitions** still slightly off in some states — same per-state pivot tuning issue. Cosmetic, deferred.
+- **Two consecutive merge commits on Multiplayer** (`35970c53` and `9fc88873`) from merging `claude/slice-5` twice. Functional but ugly. Could squash later if the user cares.
+
+**State left behind:**
+- Branch `Multiplayer` at merge commit `9fc88873`, working tree clean, all changes committed and pushed to origin/Multiplayer (user pushes manually per `feedback_user_handles_pushes.md`).
+- `claude/slice-5` branch (in `.claude/worktrees/suspicious-noyce-2a5242/`) at `1fc02f57`, fully merged into Multiplayer. Can be deleted next session.
+- Other claude/* worktree branches still around from prior sessions (cool-panini, happy-keller, etc.) — none have unmerged work as far as I know; could prune later.
+- `level_1-multiplayer.unity` exists with: `Bootstrap` (with all three Multiplayer components configured), `Game` (GameManager etc.), the level's standard platforms/floor/menus, no static player GameObjects. Build Settings checked.
+- `Multiplayer.unity` is now the lobby scene. Bootstrap there has its `gameSceneName` set to `level_1-multiplayer` so it auto-transitions both peers to the level when the room fills.
+- Unity user's main worktree at `/Users/nadav/Documents/GitHub/super-inverters-game/` had the Unity Editor open during most of the session. All my code edits via the Edit tool went into the main worktree path (not my `suspicious-noyce-2a5242` worktree) — caused a couple of merge complications when I forgot which worktree I was in. Future agent: use `git -C` or be explicit about which worktree you're editing.
+
+**What's blocked or unclear:**
+- Spawn position tuning: User has gizmos visible in Scene view but may still need to drag the Black/White Spawn Position values in the Inspector to land on actual platforms in `level_1-multiplayer`. White spawn at `(3, 1)` was reported to fall (no platform there).
+- Whether to do networked paint (2b) or networked death (2c) first. I recommended 2c first (makes the game playable across rounds). User agreed. Hadn't started yet at session end.
+
+**Next agent should:**
+1. **Acknowledge context-warning convention in first message** (per Working agreement #2 — though this convention now lives in user's auto-memory at `~/.claude/projects/-Users-nadav-Documents-GitHub-super-inverters-game/memory/`).
+2. **Start Slice 5 phase 2c (networked death + level reload).** Three sub-changes:
+   a. `PlayerManager.OnTriggerExit2D` — gate the `_gameManager.PlayerKilled` call by `photonView.IsMine` (only the dying player's owner reports the death; remote peers don't double-report).
+   b. `GameManager.PlayerKilled` — when in a Photon room, RPC the kill to all peers via a new PhotonView on the Game GameObject. The RPC handler runs the existing local death/score logic on every peer. Add the PhotonView component to `Game.prefab` (or to the Game GameObject in `level_1-multiplayer.unity` if you want to keep prefab clean).
+   c. `GameManager.waitThenReloadGame` — when in a Photon room AND we're the master client, call `PhotonNetwork.LoadLevel(gameSceneName)` instead of `SceneManager.LoadScene`. Joiner gets it auto-synced. Single-player keeps using `SceneManager.LoadScene`.
+3. **Then phase 2b (networked paint).** Per-platform PhotonView is the most-Photon-native approach but invasive (every platform prefab needs a PhotonView, scene must be saved with PUN's setup wizard to allocate scene ViewIDs). Singleton NetworkPaint with platform-ID-keyed RPCs is simpler but needs a stable platform identifier across peers — use scene-load order (`FindObjectsOfType<PlatformManager>().IndexOf(platform)` with consistent ordering) or hash of position.
+4. **Then phase 2d (visual shot ghosts on remote).** RPC `(startPos, velocity, framework)` from shooter; receiver Instantiate's a ghost-only shot prefab variant that flies but doesn't process paint (paint already handled by the shooter's own collision + RPC).
+5. **Re-test the rejoin flow** after phase 2c since the death-triggered scene reload may interact with the rejoin logic in `MultiplayerSpawner.PickMyColor`.
+6. **Compress old log entries.** This file is now well past 300 lines; keep the last ~6 entries verbatim and fold the rest into an "Older history" block at the bottom.
+
+---
+
 ### 2026-05-03 — Slice 4 unblocked; networked input + transform sync working two-peer
 
 **Agent session goal:** Resolve the in-sky bug from yesterday's Slice 4 entry and finish multiplayer controls.
