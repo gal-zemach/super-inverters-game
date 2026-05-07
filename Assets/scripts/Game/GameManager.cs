@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Photon.Pun;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -80,12 +81,14 @@ namespace Game {
 
 		private void Start()
 		{
+			AssignPlatformNetworkIds();
+
 			if (countDown && _countDownAnimation != null)
 			{
 				if (countDownEveryRound || _gameState.isGameStart())
 				{
 					Debug.Log("GameManager: Paying CountDown");
-					StartCoroutine(startCountDown());					
+					StartCoroutine(startCountDown());
 				}
 			}
 		}
@@ -194,6 +197,63 @@ namespace Game {
 				Debug.Log("reloading level");
 				StartCoroutine(waitThenReloadGame());
 			}
+		}
+
+		// --- Slice 5 phase 2b: networked platform paint ---------------------
+		// Each peer's local shots only exist on the firing peer's machine, so
+		// only the shooter's PlatformShotSensor detects the collision and
+		// triggers UpdateHit -> UpdateFramework. The other peer's view of the
+		// same platform stays the original color, which causes physics
+		// divergence (one peer falls through, the other doesn't).
+		//
+		// Fix: when a platform actually flips color (UpdateHit's threshold
+		// path), the shooter's PlatformManager calls BroadcastPaintPlatform
+		// with the platform's deterministic networkId. RPCPaintPlatform fires
+		// on remote peers and re-applies the color + collision-layer change
+		// without re-broadcasting.
+		//
+		// Platform networkIds are assigned at scene start by sorting all
+		// PlatformManager instances by initial position (x then y). Both
+		// peers run the same sort on the same scene, so each platform has
+		// the same id on every peer.
+
+		private Dictionary<int, PlatformManager> _platformsById = new Dictionary<int, PlatformManager>();
+
+		private void AssignPlatformNetworkIds()
+		{
+			var sorted = FindObjectsOfType<PlatformManager>()
+				.OrderBy(p => p.transform.position.x)
+				.ThenBy(p => p.transform.position.y)
+				.ThenBy(p => p.GetInstanceID())
+				.ToArray();
+
+			_platformsById.Clear();
+			for (int i = 0; i < sorted.Length; i++)
+			{
+				sorted[i].networkId = i;
+				_platformsById[i] = sorted[i];
+			}
+		}
+
+		public void BroadcastPaintPlatform(int platformNetworkId, Framework framework)
+		{
+			if (!PhotonNetwork.InRoom) return;
+			if (platformNetworkId < 0) return;
+			// Plain Others (not OthersBuffered) — buffered RPCs would replay
+			// onto the fresh scene after a PhotonNetwork.LoadLevel reload,
+			// pre-painting platforms before the new round starts.
+			photonView.RPC(nameof(RPCPaintPlatform), RpcTarget.Others, platformNetworkId, (int)framework);
+		}
+
+		[PunRPC]
+		private void RPCPaintPlatform(int platformNetworkId, int frameworkInt)
+		{
+			if (!_platformsById.TryGetValue(platformNetworkId, out var platform))
+			{
+				Debug.LogWarning($"GameManager: RPCPaintPlatform got unknown id {platformNetworkId}.");
+				return;
+			}
+			platform.ApplyPaintFromNetwork((Framework)frameworkInt);
 		}
 
 		IEnumerator waitThenReloadGame()

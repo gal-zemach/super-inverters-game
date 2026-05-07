@@ -1,11 +1,18 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using Photon.Pun;
 using UnityEngine;
 using Utils.Utils;
 
 
 namespace Game{
 	public class PlatformManager : MonoBehaviour {
+
+		// Slice 5 phase 2b: deterministic per-platform id assigned by
+		// GameManager.AssignPlatformNetworkIds at scene start. Used as the
+		// key in the paint RPC so both peers know which platform is being
+		// repainted. -1 = unassigned (single-player path doesn't touch it).
+		[HideInInspector] public int networkId = -1;
 
 		[SerializeField] protected List<Transform> points;
 
@@ -171,6 +178,27 @@ namespace Game{
 			if(platform_state.num_lives <= 0) {
 				platform_state.num_lives = init_num_lives;
 				UpdateFramework(platform_framework);
+
+				// Slice 5 phase 2b: in a Photon room, broadcast the new color
+				// to other peers so their local view of this platform also
+				// flips. Without this each peer only sees the platforms
+				// they shot themselves; physics diverges.
+				if (PhotonNetwork.InRoom && game_manager != null)
+				{
+					game_manager.BroadcastPaintPlatform(networkId, platform_framework);
+				}
+			}
+		}
+
+		// Slice 5 phase 2b: applied by GameManager.RPCPaintPlatform on the
+		// receiving peer. Same effect as UpdateFramework but does NOT
+		// re-broadcast (avoids a paint feedback loop).
+		public void ApplyPaintFromNetwork(Framework framework)
+		{
+			SetFramework(framework);
+			if (game_manager != null && platform_view != null)
+			{
+				game_manager.ChangeLayer(platform_view.gameObject, framework);
 			}
 		}
 
