@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Controllers;
+using Photon.Pun;
 using Utils.Utils;
 
 
@@ -393,6 +394,18 @@ namespace Game{
 			{
 				if (invincible) return;
 				if (EnableSFX) _sfx.PlayDeath();
+
+				// In a Photon room, only the local-owner peer reports the
+				// death. The remote view also independently detects the
+				// off-screen condition, so without this gate the kill would
+				// fire twice (host's and joiner's view of the same player
+				// each calling PlayerKilled), double-decrementing the score.
+				if (PhotonNetwork.InRoom)
+				{
+					var pv = GetComponent<PhotonView>();
+					if (pv != null && !pv.IsMine) return;
+				}
+
 				_gameManager.PlayerKilled(gameObject);
 				Debug.Log(gameObject.name + ": Killed");
 			}

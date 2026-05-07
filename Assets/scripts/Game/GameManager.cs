@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using Photon.Pun;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -9,7 +10,10 @@ namespace Game {
 
 	public enum Framework {GREY, BLACK, WHITE}
 
-	public class GameManager : MonoBehaviour {
+	// Inherits MonoBehaviourPun so we can call photonView.RPC for the
+	// networked PlayerKilled flow. Game.prefab needs a PhotonView component
+	// (added 2026-05-07).
+	public class GameManager : MonoBehaviourPun {
 
 		private GameView _gameView;
 		private GameState _gameState;
@@ -137,22 +141,50 @@ namespace Game {
 
 		public void PlayerKilled(GameObject killedPlayer)
 		{
+			// Networked-instantiated objects get a "(Clone)" suffix on their
+			// name; strip it so the score / win-condition logic (which keys
+			// off the literal strings "BlackPlayer" / "WhitePlayer") matches
+			// in both single-player and multiplayer.
+			string playerName = killedPlayer.name.Replace("(Clone)", "").Trim();
+
+			if (PhotonNetwork.InRoom)
+			{
+				// Broadcast so all peers update their local score and trigger
+				// reload together. AllViaServer guarantees ordered delivery
+				// (peers apply the kill in the same sequence). The dying
+				// peer's PlayerManager already gated this call by IsMine, so
+				// this RPC fires exactly once per actual death.
+				photonView.RPC(nameof(RPCPlayerKilled), RpcTarget.AllViaServer, playerName);
+				return;
+			}
+
+			DoPlayerKilled(playerName);
+		}
+
+		[PunRPC]
+		private void RPCPlayerKilled(string killedPlayerName)
+		{
+			DoPlayerKilled(killedPlayerName);
+		}
+
+		private void DoPlayerKilled(string killedPlayerName)
+		{
 			if (roundEnded) return;  // This is to solve case where 2 players died one after the other
-			
+
 			roundEnded = true;
-			_gameState.decreaseScore(killedPlayer.name);
-			_gameView.decreaseScore(killedPlayer.name);
+			_gameState.decreaseScore(killedPlayerName);
+			_gameView.decreaseScore(killedPlayerName);
 //			_gameView.updateScore();
 
 			// added _endGameMenu null check for testing purposes, so if you don't have the end game menu you can keep playing forever.
-			if (_gameState.hasNoLives(killedPlayer.name) && _endGameMenu != null)
+			if (_gameState.hasNoLives(killedPlayerName) && _endGameMenu != null)
 			{
-				Debug.Log(killedPlayer.name + " Lost");
+				Debug.Log(killedPlayerName + " Lost");
 				int winPlayerId = 0;
-				if (killedPlayer.name == "BlackPlayer") {
+				if (killedPlayerName == "BlackPlayer") {
 					winPlayerId = 2; // white player wins
 				}
-				else if (killedPlayer.name == "WhitePlayer") {
+				else if (killedPlayerName == "WhitePlayer") {
 					winPlayerId = 1; // black player wins
 				}
 				endGame(winPlayerId);
@@ -167,7 +199,24 @@ namespace Game {
 		IEnumerator waitThenReloadGame()
 		{
 			yield return new WaitForSeconds(secondsToNewRound);
-			SceneManager.LoadScene(gameSceneName);
+
+			if (PhotonNetwork.InRoom)
+			{
+				// Master triggers the network load; PUN auto-delivers it to
+				// the joiner. Both peers' next scenes start with a fresh
+				// GameManager (roundEnded=false) and fresh MultiplayerSpawner
+				// (which will Instantiate fresh players via the existing
+				// Slice 5 phase 2a flow). Non-master peers no-op here; their
+				// scene transitions when the load arrives.
+				if (PhotonNetwork.IsMasterClient)
+				{
+					PhotonNetwork.LoadLevel(gameSceneName);
+				}
+			}
+			else
+			{
+				SceneManager.LoadScene(gameSceneName);
+			}
 		}
 
 		// I moved all the action
