@@ -122,7 +122,11 @@ namespace Game{
 
 		private void Update()
 		{
-			if (controlsDisabled) return;
+			// Per-player disable (single-player path via _gameState.players)
+			// OR global countdown flag (works for multiplayer where players
+			// are PhotonNetwork.Instantiate'd and aren't in _gameState.players
+			// at GameState.Awake time).
+			if (controlsDisabled || GameManager.CountdownActive) return;
 
 			foreach (var controller in controllers)
 			{
@@ -156,7 +160,7 @@ namespace Game{
 
 		void FixedUpdate()
 		{
-			if (controlsDisabled) return;
+			if (controlsDisabled || GameManager.CountdownActive) return;
 			
 			foreach (var controller in controllers)
 			{

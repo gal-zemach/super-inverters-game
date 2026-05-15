@@ -53,6 +53,11 @@ namespace Game {
 		
 		void Awake ()
 		{
+			// Reset the static countdown flag on every scene load so it can't
+			// leak across reloads (would otherwise stay true forever if a
+			// scene reloads mid-coroutine).
+			CountdownActive = false;
+
 			_gameState = GetComponent<GameState>();
 			_gameView = GetComponent<GameView>();
 			_shotFactory = GetComponent<ShotFactory>();
@@ -326,8 +331,17 @@ namespace Game {
 			Destroy(_audioSource); // This is here so the audio will stop only after the menu appeared (because the menu has its own audio)
 		}
 		
+		// Global flag every PlayerManager checks each frame. Used in addition
+		// to the per-player disablePlayerControls/_gameState.players path
+		// because in multiplayer the players are PhotonNetwork.Instantiate'd
+		// at runtime and aren't in _gameState.players at GameState.Awake time,
+		// so the per-player disable was a no-op there. Reset to false at
+		// scene load (Awake — see below) so it doesn't leak across reloads.
+		public static bool CountdownActive { get; private set; }
+
 		IEnumerator startCountDown()
 		{
+			CountdownActive = true;
 			disablePlayerControls(true);
 //			AudioSource audioSource = _audioSource.GetComponent<AudioSource>(); // used to also stop bg music
 //			audioSource.Stop();
@@ -353,7 +367,8 @@ namespace Game {
 			
 			Debug.Log("GameManager: Player controls enabled");
 			disablePlayerControls(false);
-			
+			CountdownActive = false;
+
 			yield return new WaitForSeconds(0.7f);
 			_countDownAnimation.SetActive(false);
 		}
