@@ -260,23 +260,16 @@ namespace Game {
 		{
 			yield return new WaitForSeconds(secondsToNewRound);
 
-			if (PhotonNetwork.InRoom)
-			{
-				// Master triggers the network load; PUN auto-delivers it to
-				// the joiner. Both peers' next scenes start with a fresh
-				// GameManager (roundEnded=false) and fresh MultiplayerSpawner
-				// (which will Instantiate fresh players via the existing
-				// Slice 5 phase 2a flow). Non-master peers no-op here; their
-				// scene transitions when the load arrives.
-				if (PhotonNetwork.IsMasterClient)
-				{
-					PhotonNetwork.LoadLevel(gameSceneName);
-				}
-			}
-			else
-			{
-				SceneManager.LoadScene(gameSceneName);
-			}
+			// Each peer reloads locally. In multiplayer the kill was broadcast
+			// via RPC AllViaServer (ordered delivery), so every peer's
+			// coroutine started within RTT of each other and they reload
+			// within ~one frame. We do NOT use PhotonNetwork.LoadLevel here
+			// because PUN's auto-sync uses a room property (curScn) that
+			// fires a "changed" event on joiners — when you reload the same
+			// scene name, the property doesn't actually change, so joiners
+			// never get the trigger and don't reload. SceneManager.LoadScene
+			// sidesteps that entirely.
+			SceneManager.LoadScene(gameSceneName);
 		}
 
 		// I moved all the action
