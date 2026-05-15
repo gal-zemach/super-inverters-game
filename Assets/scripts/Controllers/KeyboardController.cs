@@ -18,19 +18,30 @@ namespace Controllers
 
         public Vector2 direction;
         private bool isJumping, isShooting, isGettingDown, isPaused;
+        private bool _wasShootingLastFrame;
         public bool autoFire, autoJump;
 
         protected override void Update()
         {
             isPaused = !inStartScene && Input.GetKeyDown(PauseButton);
-            
+
             direction.x = Input.GetAxis(HorizontalAxis);
             direction.y = Input.GetAxis(VerticalAxis);
             isShooting = autoFire ? Input.GetButton(ShootAxis) : Input.GetButtonDown(ShootAxis);
-            if (isShooting)
+
+            // Log only on the press/release transitions so a held-fire burst
+            // produces two log lines (start + end) instead of one per frame.
+            // Makes the console readable when capturing logs around a death
+            // event without losing signal that shooting happened.
+            if (isShooting && !_wasShootingLastFrame)
             {
-                Debug.Log(gameObject.name + ": shot");
+                Debug.Log(gameObject.name + ": shoot start");
             }
+            else if (!isShooting && _wasShootingLastFrame)
+            {
+                Debug.Log(gameObject.name + ": shoot end");
+            }
+            _wasShootingLastFrame = isShooting;
 
             if (direction.y < 0)
             {
