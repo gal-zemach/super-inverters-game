@@ -69,12 +69,59 @@ namespace Game{
 
 			if (init_platform_framework == Framework.GREY)
 			{
-				init_platform_framework = (Framework) Random.Range(1, 3);
+				if (PhotonNetwork.InRoom)
+				{
+					// In multiplayer, peers MUST agree on the random color
+					// for grey platforms. Random.Range uses each Unity
+					// process's own seed, so two peers would roll different
+					// colors and the platform would start desynced (host
+					// sees black, joiner sees white). Use a deterministic
+					// hash of the platform's scene hierarchy path instead —
+					// both peers load the same scene file, so they compute
+					// the same hash and pick the same color.
+					string path = GetHierarchyPath(transform);
+					int h = StableHash(path);
+					init_platform_framework = (h & 1) == 0 ? Framework.BLACK : Framework.WHITE;
+					Debug.Log($"[Grey Platform Init] PATH='{path}' hash={h} → {init_platform_framework} (InRoom=true)");
+				}
+				else
+				{
+					init_platform_framework = (Framework) Random.Range(1, 3);
+					Debug.Log($"[Grey Platform Init] {gameObject.name} random → {init_platform_framework} (InRoom=false)");
+				}
 			}
 
 			InitState();
 			UpdateFramework(init_platform_framework);
 			UpdateSegmentPeriod();
+		}
+
+		// Process-independent string hash. C#'s string.GetHashCode() is not
+		// guaranteed stable across .NET runtimes, which could let two peers
+		// running different mono variants (e.g. Editor vs WebGL build) disagree.
+		// FNV-style polynomial hash is fully deterministic from the character
+		// codes alone.
+		private static int StableHash(string s)
+		{
+			int h = 17;
+			foreach (char c in s) h = h * 31 + c;
+			return h & 0x7FFFFFFF;
+		}
+
+		// Build the full scene hierarchy path (root → leaf, name-joined). The
+		// path is identical on every peer because they load the same scene
+		// file; this is the same trick GameManager.AssignPlatformNetworkIds
+		// uses for its sort key.
+		private static string GetHierarchyPath(Transform t)
+		{
+			var sb = new System.Text.StringBuilder();
+			while (t != null)
+			{
+				if (sb.Length > 0) sb.Insert(0, "/");
+				sb.Insert(0, t.name);
+				t = t.parent;
+			}
+			return sb.ToString();
 		}
 
 		public void AddPoint(GameObject point) {

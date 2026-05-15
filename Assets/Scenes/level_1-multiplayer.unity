@@ -2107,11 +2107,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f56441ee1abf45b2bf2c55309a23218, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  gameSceneName: level_1
+  gameSceneName: level_1-multiplayer
   secondsToNewRound: 1.5
   BPM: 250
   countDown: 1
-  countDownEveryRound: 0
+  countDownEveryRound: 1
+  muteMusicForTesting: 0
 --- !u!114 &1088979593
 MonoBehaviour:
   m_ObjectHideFlags: 0

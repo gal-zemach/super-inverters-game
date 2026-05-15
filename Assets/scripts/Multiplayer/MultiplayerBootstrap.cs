@@ -59,6 +59,15 @@ namespace Multiplayer
                 Debug.Log($"[Multiplayer] Editor override: will join room '{pendingRoomToJoin}'.");
             }
 #endif
+            // Enable on EVERY peer (master + joiner) so that when master
+            // calls PhotonNetwork.LoadLevel, the joiner's listener for the
+            // curScn room property fires and follows along. The default
+            // value in PUN is false, and LoadLevel only auto-enables it on
+            // the caller (master). Without this set on the joiner, the
+            // joiner stays on the lobby scene while the master transitions
+            // to the game scene alone.
+            PhotonNetwork.AutomaticallySyncScene = true;
+
             PhotonNetwork.GameVersion = Application.version;
             PhotonNetwork.ConnectUsingSettings();
             Debug.Log("[Multiplayer] Connecting to Photon...");

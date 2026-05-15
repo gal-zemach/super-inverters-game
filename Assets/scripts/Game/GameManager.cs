@@ -228,10 +228,15 @@ namespace Game {
 
 		private void AssignPlatformNetworkIds()
 		{
+			// Sort by hierarchy path (full GameObject path from scene root)
+			// rather than by position + InstanceID. The path is identical on
+			// both peers because they load the same scene file; InstanceID
+			// is process-local and DIFFERS between Unity instances, which
+			// caused id drift for platforms at identical positions —
+			// peer A's "id 7" pointed at a different physical platform than
+			// peer B's "id 7", so paint RPCs landed on the wrong platform.
 			var sorted = FindObjectsOfType<PlatformManager>()
-				.OrderBy(p => p.transform.position.x)
-				.ThenBy(p => p.transform.position.y)
-				.ThenBy(p => p.GetInstanceID())
+				.OrderBy(p => GetHierarchyPath(p.transform), System.StringComparer.Ordinal)
 				.ToArray();
 
 			_platformsById.Clear();
@@ -239,7 +244,20 @@ namespace Game {
 			{
 				sorted[i].networkId = i;
 				_platformsById[i] = sorted[i];
+				Debug.Log($"[Platform IDs] {i}: {GetHierarchyPath(sorted[i].transform)} at {sorted[i].transform.position}");
 			}
+		}
+
+		private static string GetHierarchyPath(Transform t)
+		{
+			var sb = new System.Text.StringBuilder();
+			while (t != null)
+			{
+				if (sb.Length > 0) sb.Insert(0, "/");
+				sb.Insert(0, t.name);
+				t = t.parent;
+			}
+			return sb.ToString();
 		}
 
 		public void BroadcastPaintPlatform(int platformNetworkId, Framework framework)

@@ -191,6 +191,11 @@ PrefabInstance:
       propertyPath: gameSceneName
       value: Multiplayer
       objectReference: {fileID: 0}
+    - target: {fileID: 5035766991149989367, guid: 5fdd315cdab3b465588e2d1688ac7c77,
+        type: 3}
+      propertyPath: sceneViewId
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5fdd315cdab3b465588e2d1688ac7c77, type: 3}
 --- !u!1 &109394822
@@ -224,8 +229,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3f74be37c9da34463a15b80cfda3f426, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  editorRoomOverride: (editor) ?room=7A5C82
+  editorRoomOverride: 
   hostColor: 1
+  gameSceneName: level_1-multiplayer
 --- !u!4 &109394824
 Transform:
   m_ObjectHideFlags: 0
@@ -256,6 +262,7 @@ MonoBehaviour:
   whitePrefabName: WhitePlayer
   blackSpawnPosition: {x: -3, y: 1}
   whiteSpawnPosition: {x: 3, y: 1}
+  targetSceneName: level_1-multiplayer
 --- !u!114 &109394826
 MonoBehaviour:
   m_ObjectHideFlags: 0
