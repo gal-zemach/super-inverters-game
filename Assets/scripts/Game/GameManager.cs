@@ -40,7 +40,10 @@ namespace Game {
 		[SerializeField]
 		public bool countDownEveryRound = false;
 
-		
+		[SerializeField, Tooltip("Disable the scene's Audio Source GameObject in Awake. Useful during multiplayer development so the music doesn't restart on every PhotonNetwork.LoadLevel reload. Leave unchecked for shipping / single-player.")]
+		public bool muteMusicForTesting = false;
+
+
 		private bool roundEnded;
 		private GameObject _endGameMenu;
 		private GameObject _audioSource;
@@ -71,7 +74,11 @@ namespace Game {
 			if (_endGameMenu != null) _endGameMenu.SetActive(false);
 			
 			_audioSource = GameObject.Find(Values.AUDIO_SOURCE_GAMEOBJ_NAME);
-			
+			if (_audioSource != null && muteMusicForTesting)
+			{
+				_audioSource.SetActive(false);
+			}
+
 			_countDownAnimation = GameObject.Find(Values.COUNTDOWN_ANIM_GAMEOBJ_NAME);
 			if (_countDownAnimation != null)
 			{
@@ -260,16 +267,28 @@ namespace Game {
 		{
 			yield return new WaitForSeconds(secondsToNewRound);
 
-			// Each peer reloads locally. In multiplayer the kill was broadcast
-			// via RPC AllViaServer (ordered delivery), so every peer's
-			// coroutine started within RTT of each other and they reload
-			// within ~one frame. We do NOT use PhotonNetwork.LoadLevel here
-			// because PUN's auto-sync uses a room property (curScn) that
-			// fires a "changed" event on joiners — when you reload the same
-			// scene name, the property doesn't actually change, so joiners
-			// never get the trigger and don't reload. SceneManager.LoadScene
-			// sidesteps that entirely.
-			SceneManager.LoadScene(gameSceneName);
+			if (PhotonNetwork.InRoom)
+			{
+				// Every peer calls PhotonNetwork.LoadLevel locally — not
+				// just master. The kill RPC was AllViaServer (ordered)
+				// so both peers' coroutines start within RTT of each
+				// other. We do NOT rely on PUN's AutomaticallySyncScene
+				// because that fires off a "curScn property changed"
+				// event on joiners — reloading the same scene name
+				// doesn't change the property, so joiners never see the
+				// event and don't follow master.
+				//
+				// We can't use SceneManager.LoadScene either: PUN's
+				// scene-view IDs only get re-registered when scenes
+				// load via PhotonNetwork.LoadLevel, so the fresh
+				// scene's PhotonView returns null on RPC calls (paint
+				// broadcast NREs from the round-after-reload).
+				PhotonNetwork.LoadLevel(gameSceneName);
+			}
+			else
+			{
+				SceneManager.LoadScene(gameSceneName);
+			}
 		}
 
 		// I moved all the action
