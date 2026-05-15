@@ -144,6 +144,63 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
+## 2026-05-07 — Slice 5 phases 2b + 2c (networked paint, death, level reload)
+
+**Agent session goal:** Resume Slice 5 from yesterday's phase 2a stop and land the two remaining gameplay-sync features so a multiplayer round is playable end-to-end.
+
+**What landed (all committed to `Multiplayer`, pushed by user at end of session):**
+
+- **`f323e5a7` — Slice 5 phase 2c: networked death + level reload.** Three changes:
+  - `PlayerManager.OnTriggerExit2D` — gates the `_gameManager.PlayerKilled` call by `photonView.IsMine` in a Photon room. Without this each peer's view of the same player independently detects the off-screen trigger and `PlayerKilled` would fire twice.
+  - `GameManager` is now `MonoBehaviourPun`. `PlayerKilled` normalizes the player name (strips `"(Clone)"` suffix from `PhotonNetwork.Instantiate`) and broadcasts via `RPCPlayerKilled` with `RpcTarget.AllViaServer` (ordered delivery). Each peer's RPC handler runs the existing local death/score/reload logic.
+  - `waitThenReloadGame` was originally master-only `PhotonNetwork.LoadLevel` + auto-sync to joiner. **That didn't work** — see fix in `3606c5cb` below.
+- **`0ba492e2` — Add PhotonView to `Assets/Prefabs/Game.prefab`** so `GameManager.photonView` resolves for the RPC calls. User added the component in Unity before this commit; the diff is mostly the Unity 2020 prefab format upgrade (`serializedVersion: 5` → `6`, `m_PrefabParentObject` → `m_CorrespondingSourceObject`) that auto-fired when the prefab was opened.
+- **`d078bf32` — Slice 5 phase 2b: networked platform paint via RPC.**
+  - `GameManager.AssignPlatformNetworkIds` runs at `Start`: sorts every `PlatformManager` by initial position (x → y → InstanceID) and assigns sequential ids. Both peers run the same sort on the same scene → platform N is the same physical platform on every peer.
+  - `GameManager.BroadcastPaintPlatform` — `photonView.RPC` with `RpcTarget.Others` (NOT `OthersBuffered`; buffered RPCs would replay onto the fresh scene after a `PhotonNetwork.LoadLevel` reload).
+  - `GameManager.RPCPaintPlatform` — looks up platform by id, calls `ApplyPaintFromNetwork`.
+  - `PlatformManager` — new `networkId` field, `ApplyPaintFromNetwork` method (`SetFramework` + `ChangeLayer`, no re-broadcast), and a broadcast call from `UpdateHit`'s threshold path. Per-peer `num_lives` tracking is fine for default `init_num_lives=1`.
+- **`3606c5cb` — Slice 5 phase 2c fixes: joiner-reload + life-decrement.** Two bugs surfaced in playtest:
+  - `PhotonNetwork.LoadLevel` only reloaded the **master**, not the joiner. PUN's `AutomaticallySyncScene` triggers off a property-changed event on the room property `curScn`; reloading the same scene name doesn't change the property, so joiners never get the trigger. Replaced `PhotonNetwork.LoadLevel` with `SceneManager.LoadScene` on every peer — since the kill RPC is `AllViaServer` (ordered), all peers' coroutines start within RTT and reload within a frame of each other.
+  - `GameState.initializeScores` iterated `GameObject.FindGameObjectsWithTag("player")` which returned **zero in `level_1-multiplayer`** (the static `BlackPlayer`/`WhitePlayer` GameObjects were deleted from the scene during phase 2a setup so the spawner could `PhotonNetwork.Instantiate` them at runtime). With an empty `players` array, `ScoreKeeper._scores` got no entries, and every `decreaseScore` call was a no-op (`ContainsKey` returned false). Hardcoded the seed to `"BlackPlayer"` and `"WhitePlayer"` unconditionally.
+
+**Things confirmed working in playtest (one Editor + one ParrelSync clone):**
+
+- ✅ Both peers transition from lobby (`Multiplayer.unity`) → level scene (`level_1-multiplayer.unity`)
+- ✅ Both peers spawn at correct colors via the rejoin-safe color claim (`myFramework` player property)
+- ✅ Movement, aim, shooting all networked, near-real-time on both screens
+- ✅ Platform paint syncs: when peer A shoots a platform, peer B sees the color change
+- ✅ Player falls off screen → both editors reload simultaneously after ~3s → both players respawn
+- ✅ Life count decrements on death; presumably end-game triggers when one peer hits 0 lives (not deeply re-tested in this session)
+
+**Known bugs left for next session (NOT FIXED):**
+
+- **Phase 2d — visual shot ghosts on remote.** When peer A shoots, peer B doesn't see the shot fly. Paint sync still works (so the platform recolor appears on both) but the projectile is invisible on the non-shooter side. Plan: RPC `(startPos, velocity, framework)` from the shooter; receiver instantiates a *ghost* shot prefab variant that flies and self-destructs visually but doesn't process paint (paint is already handled by the shooter's collision + the existing paint RPC).
+- **Doublejump sprite pivot mismatch.** Cosmetic art polish, deferred since 2026-05-06.
+- **Slight feet-on-ground hover/sink at jump-land transitions.** Cosmetic, deferred.
+- **`Game` GameObject in `level_1-multiplayer.unity` is baked (not a prefab instance).** I had the user manually add a `PhotonView` to that scene's `Game` GameObject because the prefab→scene linkage was severed. If you copy the level to another multiplayer variant (e.g. `level_2-multiplayer`), you'll need to repeat that step. Worth fixing later by converting Game to a real prefab instance in every multiplayer scene.
+- **Two consecutive merge commits** keep landing on `Multiplayer` whenever `claude/slice-5` gets merged in. Functional but log is noisier than necessary. Could squash later.
+
+**State left behind:**
+
+- Branch `Multiplayer` ends at merge commit `4210123d`, plus the scene change for the `PhotonView` add on `level_1-multiplayer.unity`'s `Game` GameObject (committed by user as part of the session push). All pushed to origin/Multiplayer.
+- `claude/slice-5` in `.claude/worktrees/suspicious-noyce-2a5242/` at `3606c5cb`, fully merged.
+- `level_1-multiplayer.unity` has the `Game` GameObject with `PhotonView` attached directly (since it's not a prefab instance). Spawn positions tuned to actual platforms.
+- All gizmos / inspector configuration unchanged from yesterday.
+
+**What's blocked or unclear:**
+
+- Edge case: if a player runs out of lives mid-multiplayer, does `endGame` fire correctly on both peers? `endGame` runs locally in `DoPlayerKilled` when `hasNoLives` is true; both peers reach the same state via the RPC, so should work. Not deeply tested.
+- Edge case: rejoin during an in-flight round. The color-rejoin fix from 2026-05-06 handles initial color, but the rejoiner doesn't see the platform paint state that has happened so far (RPCs aren't buffered — see phase 2b commit message). For our friends-only no-reconnect spec this is acceptable.
+
+**Next agent should:**
+
+1. **Acknowledge context-warning convention in first message** (per user's auto-memory at `~/.claude/projects/-Users-nadav-Documents-GitHub-super-inverters-game/memory/`).
+2. **Start Slice 5 phase 2d** — visual shot ghosts on remote peers. Shooter's `PlayerManager.shoot` (or `ShotFactory.MakeObject`) needs to RPC the shot's spawn parameters to other peers, who instantiate a ghost shot that flies visually but does NOT process paint collisions (paint is already broadcast separately by phase 2b). Easiest design: add a `[SerializeField] bool isGhost` to `ShotView`; ghosts skip the `PlatformShotSensor`-triggered `UpdateHit` call.
+3. **After 2d**, Slice 5 is end-to-end complete. Optional follow-ups: clean up merge-commit noise on `Multiplayer`, prune stale `claude/*` worktree branches (verify none have unmerged work first), compress this `AGENT_CONTEXT.md` if it gets over 300 lines again.
+
+---
+
 ### 2026-05-06 — Multi-bug pass + Slice 5 phase 2a (lobby→level scene transition)
 
 **Agent session goal:** Resume after Slice 4. User flagged a hover-after-landing visual; that opened a multi-hour pass through several player-mechanics bugs, then started Slice 5 of the integration plan.

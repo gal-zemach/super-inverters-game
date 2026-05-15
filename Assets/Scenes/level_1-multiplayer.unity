@@ -611,6 +611,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7b9be4024db145f4a2a54452986f949, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  networkId: -1
   points: []
   beats_per_cycle: 16
   cycle_period: 3.84
@@ -1083,6 +1084,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7b9be4024db145f4a2a54452986f949, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  networkId: -1
   points: []
   beats_per_cycle: 16
   cycle_period: 3.84
@@ -2000,6 +2002,7 @@ GameObject:
   - component: {fileID: 1088979590}
   - component: {fileID: 1088979589}
   - component: {fileID: 1088979588}
+  - component: {fileID: 1088979593}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -2109,6 +2112,28 @@ MonoBehaviour:
   BPM: 250
   countDown: 1
   countDownEveryRound: 0
+--- !u!114 &1088979593
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1088979586}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa584fbee541324448dd18d8409c7a41, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ObservedComponentsFoldoutOpen: 1
+  Group: 0
+  prefixField: -1
+  Synchronization: 3
+  OwnershipTransfer: 0
+  observableSearch: 2
+  ObservedComponents: []
+  sceneViewId: 1
+  InstantiationId: 0
+  isRuntimeInstantiated: 0
 --- !u!1 &1128330409
 GameObject:
   m_ObjectHideFlags: 0
@@ -3876,6 +3901,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7b9be4024db145f4a2a54452986f949, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  networkId: -1
   points: []
   beats_per_cycle: 16
   cycle_period: 3.84
@@ -4099,6 +4125,11 @@ PrefabInstance:
   m_Modification:
     m_TransformParent: {fileID: 1088979587}
     m_Modifications:
+    - target: {fileID: 114416674067925422, guid: 1f72d328c53e64c4ca4b03f43338c876,
+        type: 3}
+      propertyPath: m_PresetInfoIsWorld
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 223247810061691024, guid: 1f72d328c53e64c4ca4b03f43338c876,
         type: 3}
       propertyPath: m_Camera
@@ -5048,6 +5079,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7b9be4024db145f4a2a54452986f949, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  networkId: -1
   points: []
   beats_per_cycle: 16
   cycle_period: 3.84
