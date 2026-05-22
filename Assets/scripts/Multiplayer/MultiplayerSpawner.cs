@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using ExitGames.Client.Photon;
 using Game;
 using Photon.Pun;
@@ -42,6 +43,9 @@ namespace Multiplayer
 
         private bool spawned;
 
+        // Prevents two TrySpawn calls in the same frame (Start + room props).
+        private static bool s_spawnInProgress;
+
         private void Start()
         {
             // Post-LoadLevel case: we're now in the game scene, already in a
@@ -49,6 +53,8 @@ namespace Multiplayer
             // Start instead.
             if (PhotonNetwork.InRoom && IsInTargetScene())
             {
+                DestroyStaleLocalNetworkedPlayers();
+                spawned = false;
                 TrySpawn();
             }
         }
@@ -108,9 +114,58 @@ namespace Multiplayer
 #endif
         }
 
+        // Respawn only the local peer after a round death (no full scene reload).
+        public void ForceRespawn()
+        {
+            DestroyStaleLocalNetworkedPlayers();
+            spawned = false;
+            TrySpawn();
+        }
+
+        public bool IsLocalPlayer(string killedPlayerName)
+        {
+            string baseName = killedPlayerName.Replace("(Clone)", "").Trim();
+            var local = FindLocalNetworkedPlayer();
+            if (local == null) return false;
+            return local.name.Replace("(Clone)", "").Trim().StartsWith(baseName);
+        }
+
+        private static GameObject FindLocalNetworkedPlayer()
+        {
+            foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
+            {
+                var pv = go.GetComponentInChildren<PhotonView>();
+                if (pv != null && pv.IsMine) return go;
+            }
+            return null;
+        }
+
+        private static void DestroyStaleLocalNetworkedPlayers()
+        {
+            var toDestroy = new List<GameObject>();
+            foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
+            {
+                var pv = go.GetComponentInChildren<PhotonView>();
+                if (pv != null && pv.IsMine) toDestroy.Add(go);
+            }
+
+            if (toDestroy.Count == 0) return;
+
+            foreach (var go in toDestroy)
+            {
+                PhotonNetwork.Destroy(go);
+            }
+        }
+
         private void TrySpawn()
         {
-            if (spawned) return;
+            if (spawned || s_spawnInProgress) return;
+
+            if (FindLocalNetworkedPlayer() != null)
+            {
+                spawned = true;
+                return;
+            }
 
             if (!TryGetHostColor(out Framework hostColor))
             {
@@ -127,9 +182,17 @@ namespace Multiplayer
             string prefabName = myColor == Framework.BLACK ? blackPrefabName : whitePrefabName;
             Vector2 spawnPos = myColor == Framework.BLACK ? blackSpawnPosition : whiteSpawnPosition;
 
-            PhotonNetwork.Instantiate(prefabName, spawnPos, Quaternion.identity);
-            spawned = true;
-            Debug.Log($"[Multiplayer] Spawned local '{prefabName}' as {myColor} at {spawnPos}.");
+            s_spawnInProgress = true;
+            try
+            {
+                PhotonNetwork.Instantiate(prefabName, spawnPos, Quaternion.identity);
+                spawned = true;
+                Debug.Log($"[Multiplayer] Spawned local '{prefabName}' as {myColor} at {spawnPos}.");
+            }
+            finally
+            {
+                s_spawnInProgress = false;
+            }
         }
 
         private static Framework PickMyColor(Framework hostColor)

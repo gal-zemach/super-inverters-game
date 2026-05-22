@@ -13,9 +13,9 @@ namespace Game {
 //			return clone;
 //		}
 		
-		public GameObject MakeObject(Vector2 position, Vector2 startVelocity, float rotation, Framework shot_framework){
+		public GameObject MakeObject(Vector2 position, Vector2 startVelocity, float rotation, Framework shot_framework, bool isGhost = false){
 			GameObject clone = (GameObject)Instantiate(shotPrefab);
-			clone.GetComponent<ShotManager>().Activate(position, startVelocity, rotation, shot_framework);
+			clone.GetComponent<ShotManager>().Activate(position, startVelocity, rotation, shot_framework, isGhost);
 			return clone;
 		}
 	}

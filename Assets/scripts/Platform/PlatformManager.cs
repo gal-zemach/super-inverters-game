@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using Photon.Pun;
 using UnityEngine;
-using Utils.Utils;
 
 
 namespace Game{
@@ -173,41 +172,56 @@ namespace Game{
 			return (Time.time - initial_lerp_time)/segment_period;
 		}
 
+		private bool TryComputePositionForCycle(float cycle_percentage, out Vector2 pos)
+		{
+			pos = default;
+			if (points.Count < 2) return false;
+			int source_point_idx = Mathf.FloorToInt(cycle_percentage * (points.Count - 1) * 2);
+			source_point_idx = source_point_idx < points.Count ? source_point_idx : 2 * (points.Count - 1) - source_point_idx;
+			int target_point_idx = Mathf.CeilToInt(cycle_percentage * (points.Count - 1) * 2);
+			target_point_idx = target_point_idx < points.Count ? target_point_idx : 2 * (points.Count - 1) - target_point_idx;
+			int num_of_paths = (points.Count - 1) * 2;
+			float path_percentage = cycle_percentage * num_of_paths % 1;
+			pos = Vector2.Lerp(points[source_point_idx].position, points[target_point_idx].position, path_percentage);
+			current_point_idx = source_point_idx;
+			this.target_point_idx = target_point_idx;
+			return true;
+		}
+
 		// This is used only from editor to mock movement of platform
 		public void SetPosition(float cycle_percentage) {
-			if (points.Count < 2) {
-				return;
-			}
-			int source_point_idx, target_point_idx;
-			source_point_idx = Mathf.FloorToInt(cycle_percentage*(points.Count-1)*2);
-			source_point_idx = source_point_idx < points.Count ? source_point_idx : 2*(points.Count-1) - source_point_idx; 
-			target_point_idx = Mathf.CeilToInt(cycle_percentage*(points.Count-1)*2);
-			target_point_idx = target_point_idx < points.Count ? target_point_idx : 2*(points.Count-1) - target_point_idx;
-//			Debug.Log("PlatformManager idx: " + source_point_idx.ToString() + ", " + target_point_idx.ToString() );
-			int num_of_paths = (points.Count-1)*2;
-			float path_percentage = cycle_percentage*num_of_paths % 1;
-			Vector2 pos = Vector2.Lerp(points[source_point_idx].position, points[target_point_idx].position, path_percentage);
+			if (TryComputePositionForCycle(cycle_percentage, out Vector2 pos))
+				transform.position = pos;
+		}
 
-//			if (platform_view == null) {
-//				AssignView();
-//			}
-//			platform_view.Position =pos;
-			transform.position = pos;
-
+		private void ApplyMultiplayerSyncedPosition()
+		{
+			int numPaths = (points.Count - 1) * 2;
+			if (numPaths <= 0 || segment_period <= 0f) return;
+			double cyclePeriod = segment_period * numPaths;
+			double elapsed = PhotonNetwork.Time - GameManager.PlatformMotionEpoch;
+			float cycle_percentage = (float)((elapsed % cyclePeriod) / cyclePeriod);
+			if (!TryComputePositionForCycle(cycle_percentage, out Vector2 pos)) return;
+			platform_state.Position = pos;
+			platform_view.Position = pos;
 		}
 
 		protected void FixedUpdate() {
-			if (points.Count != 0) {
-				float path_percentage = GetPathPercentage();
-				if (path_percentage <= 1.0f) {
-//					Debug.Log(current_point_idx + ") " + points[current_point_idx].position + " , " + target_point_idx + ") " + points[target_point_idx].position);
-					Vector2 pos = Vector2.Lerp(points[current_point_idx].position, points[target_point_idx].position, path_percentage);
-					platform_state.Position = pos;
-					platform_view.Position = platform_state.Position;
-				} 
-				else {
-					UpdateSourceTargetPoints();
-				}
+			if (points.Count == 0) return;
+			if (PhotonNetwork.InRoom && GameManager.PlatformMotionEpoch < 0) return;
+			if (PhotonNetwork.InRoom && GameManager.PlatformMotionEpoch >= 0)
+			{
+				ApplyMultiplayerSyncedPosition();
+				return;
+			}
+			float path_percentage = GetPathPercentage();
+			if (path_percentage <= 1.0f) {
+				Vector2 pos = Vector2.Lerp(points[current_point_idx].position, points[target_point_idx].position, path_percentage);
+				platform_state.Position = pos;
+				platform_view.Position = platform_state.Position;
+			}
+			else {
+				UpdateSourceTargetPoints();
 			}
 		}
 
@@ -246,6 +260,7 @@ namespace Game{
 			if (game_manager != null && platform_view != null)
 			{
 				game_manager.ChangeLayer(platform_view.gameObject, framework);
+				platform_view.ReleaseCarriedWithMismatchedFramework(framework);
 			}
 		}
 
@@ -266,9 +281,8 @@ namespace Game{
 		private void UpdateFramework(Framework platform_framework) {
 			SetFramework(platform_framework);
 			game_manager.ChangeLayer(platform_view.gameObject, platform_framework);
+			platform_view.ReleaseCarriedWithMismatchedFramework(platform_framework);
 		}
-
-
 	}
 }
 

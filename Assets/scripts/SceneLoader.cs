@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -15,6 +15,13 @@ namespace Game {
 
 		public void ReloadCurrentScene()
 		{
+			var gameManager = GameObject.Find("Game")?.GetComponent<GameManager>();
+			if (gameManager != null)
+			{
+				gameManager.RequestNetworkedReplay();
+				return;
+			}
+
 			int currentScene = SceneManager.GetActiveScene().buildIndex;
 			LoadScene(currentScene);
 		}
@@ -25,4 +32,3 @@ namespace Game {
 		}
 	}
 }
-

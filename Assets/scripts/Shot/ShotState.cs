@@ -9,6 +9,13 @@ namespace Game{
 
 		[SerializeField] public Framework shot_framework;
 
+		// Slice 5 phase 2d: a ghost is a visual-only copy of a remote peer's
+		// shot, spawned via GameManager.RPCSpawnGhostShot. It flies and
+		// self-destructs like a real shot but must NOT paint platforms — paint
+		// is broadcast authoritatively by the shooter (phase 2b paint RPC). The
+		// platform collision handlers check this flag and skip UpdateHit.
+		[HideInInspector] public bool isGhost = false;
+
 		[SerializeField] public float Rotation {
 			get {
 				return transform.eulerAngles.z;

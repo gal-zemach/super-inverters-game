@@ -45,10 +45,19 @@ namespace Game {
 
 
 		private bool roundEnded;
+		private bool _countdownRunning;
 		private GameObject _endGameMenu;
 		private GameObject _audioSource;
 		private GameObject _countDownAnimation;
 		private GameObject _pause_menu;
+
+		private const int MultiplayerPlayerCount = 2;
+		private const float WaitForPlayersTimeoutSeconds = 10f;
+
+		// Survives PhotonNetwork.LoadLevel round reloads while still in the room.
+		// Mid-round reloads re-run Start() but must not replay Ready/Set/Fight.
+		// Cleared on rematch (Replay) and when not in a room (lobby / disconnect).
+		private static bool s_matchStartCountdownPlayed;
 		
 		
 		void Awake ()
@@ -57,6 +66,16 @@ namespace Game {
 			// leak across reloads (would otherwise stay true forever if a
 			// scene reloads mid-coroutine).
 			CountdownActive = false;
+			_countdownRunning = false;
+			if (!PhotonNetwork.InRoom)
+			{
+				s_matchStartCountdownPlayed = false;
+				PlatformMotionEpoch = -1;
+			}
+			else
+			{
+				PlatformMotionEpoch = -1;
+			}
 
 			_gameState = GetComponent<GameState>();
 			_gameView = GetComponent<GameView>();
@@ -95,12 +114,109 @@ namespace Game {
 		{
 			AssignPlatformNetworkIds();
 
+			// Never use the single-player countdown path on MP levels — that scene
+			// has countDownEveryRound=1 and would start the countdown before
+			// PhotonNetwork.Instantiate spawns anyone when InRoom is briefly false.
+			if (IsMultiplayerLevel())
+			{
+				// Round reload (death → LoadLevel) must not restart countdown;
+				// level_1-multiplayer has countDownEveryRound=1 for SP semantics only.
+				if (!s_matchStartCountdownPlayed)
+				{
+					StartCoroutine(MultiplayerCountdownLoop());
+				}
+				return;
+			}
+
+			TryStartCountdownSinglePlayer();
+		}
+
+		private static bool IsMultiplayerLevel()
+		{
+			return Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>() != null;
+		}
+
+		private void TryStartCountdownSinglePlayer()
+		{
 			if (countDown && _countDownAnimation != null)
 			{
 				if (countDownEveryRound || _gameState.isGameStart())
 				{
+					if (_countdownRunning) return;
 					Debug.Log("GameManager: Paying CountDown");
 					StartCoroutine(startCountDown());
+				}
+			}
+		}
+
+		// Each peer starts the countdown locally once both networked avatars exist in
+		// the scene (no RPC — avoids joiner missing a 2s readiness window).
+		private IEnumerator MultiplayerCountdownLoop()
+		{
+			if (!countDown || _countDownAnimation == null)
+			{
+				Debug.LogWarning("GameManager: Multiplayer countdown disabled (countDown off or CountDownAnimation missing).");
+				yield break;
+			}
+
+			yield return null;
+
+			float elapsed = 0f;
+			while (CountNetworkedPlayersInScene() < MultiplayerPlayerCount && elapsed < WaitForPlayersTimeoutSeconds)
+			{
+				// Input-only lock while waiting for the second peer. Do NOT disable
+				// Rigidbody2D simulation here — spawn Y is above the platform and
+				// simulated=false leaves the avatar hovering in mid-air (log 5efe84).
+				if (CountNetworkedPlayersInScene() > 0)
+				{
+					CountdownActive = true;
+				}
+
+				elapsed += Time.deltaTime;
+				yield return null;
+			}
+
+			if (CountNetworkedPlayersInScene() < MultiplayerPlayerCount)
+			{
+				CountdownActive = false;
+				Debug.LogWarning(
+					$"GameManager: Timed out before countdown ({CountNetworkedPlayersInScene()}/{MultiplayerPlayerCount} networked players).");
+				yield break;
+			}
+
+			if (_countdownRunning || s_matchStartCountdownPlayed) yield break;
+			s_matchStartCountdownPlayed = true;
+			Debug.Log($"GameManager: {CountNetworkedPlayersInScene()} players in scene — starting countdown.");
+			StartCoroutine(startCountDown());
+		}
+
+		private static int CountNetworkedPlayersInScene()
+		{
+			int count = 0;
+			foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
+			{
+				if (go.GetComponentInChildren<PhotonView>() != null) count++;
+			}
+			return count;
+		}
+
+		// Freeze every visible player during countdown (local + remote).
+		private void SetCountdownPhysicsFrozen(bool frozen)
+		{
+			foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
+			{
+				var rb = go.GetComponent<Rigidbody2D>();
+				if (rb == null) continue;
+
+				var pv = go.GetComponentInChildren<PhotonView>();
+				if (frozen)
+				{
+					rb.velocity = Vector2.zero;
+					rb.simulated = false;
+				}
+				else if (pv == null || pv.IsMine)
+				{
+					rb.simulated = true;
 				}
 			}
 		}
@@ -115,6 +231,26 @@ namespace Game {
 
 		public void SpawnShot(Vector2 position, Vector2 startVelocity, float rotation, Framework framework) {
 			GameObject shot = _shotFactory.MakeObject(position, startVelocity,rotation,framework);
+
+			// Slice 5 phase 2d: this peer just spawned its own real shot (which
+			// flies and paints locally + broadcasts paint via phase 2b). Tell
+			// the other peers to spawn a visual-only ghost so they see the shot
+			// fly too. Only the owning peer reaches SpawnShot (PlayerManager.shoot
+			// gates remote players out in a room), so this never double-fires.
+			if (PhotonNetwork.InRoom)
+			{
+				photonView.RPC(nameof(RPCSpawnGhostShot), RpcTarget.Others,
+					position, startVelocity, rotation, (int)framework);
+			}
+		}
+
+		[PunRPC]
+		private void RPCSpawnGhostShot(Vector2 position, Vector2 startVelocity, float rotation, int frameworkInt)
+		{
+			// Ghost = visual-only; the `true` flag makes the platform collision
+			// handlers skip UpdateHit so it doesn't re-paint (paint already
+			// arrives via RPCPaintPlatform).
+			_shotFactory.MakeObject(position, startVelocity, rotation, (Framework)frameworkInt, true);
 		}
 
 		public void SpawnShell(Vector2 position, Vector2 startVelocity, float rotation, Framework framework, Collider2D shooterCollider) {
@@ -137,7 +273,6 @@ namespace Game {
 			if (obj.CompareTag(Values.PLATFORM_BODY_TAG)) {
 				SetLayerRecursively(obj, framework);
 			}
-			
 			else if (obj.CompareTag(Values.PLAYER_TAG)) obj.layer = framework == Framework.BLACK ? black_player_layer : 
 														   white_player_layer;
 		}
@@ -184,6 +319,7 @@ namespace Game {
 
 		private void DoPlayerKilled(string killedPlayerName)
 		{
+			if (CountdownActive) return;
 			if (roundEnded) return;  // This is to solve case where 2 players died one after the other
 
 			roundEnded = true;
@@ -204,11 +340,32 @@ namespace Game {
 				}
 				endGame(winPlayerId);
 			}
+			else if (PhotonNetwork.InRoom && IsMultiplayerLevel())
+			{
+				HandleMultiplayerRoundDeath(killedPlayerName);
+			}
 			else
 			{
 				Debug.Log("reloading level");
 				StartCoroutine(waitThenReloadGame());
 			}
+		}
+
+		private void HandleMultiplayerRoundDeath(string killedPlayerName)
+		{
+			var spawner = Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
+			if (spawner != null && spawner.IsLocalPlayer(killedPlayerName))
+			{
+				spawner.ForceRespawn();
+			}
+
+			StartCoroutine(ReleaseRoundEndedAfterDelay());
+		}
+
+		private IEnumerator ReleaseRoundEndedAfterDelay()
+		{
+			yield return new WaitForSeconds(secondsToNewRound);
+			roundEnded = false;
 		}
 
 		// --- Slice 5 phase 2b: networked platform paint ---------------------
@@ -289,28 +446,70 @@ namespace Game {
 		IEnumerator waitThenReloadGame()
 		{
 			yield return new WaitForSeconds(secondsToNewRound);
+			ReloadMatchScene();
+		}
+
+		// End-game menu Replay button → SceneLoader.ReloadCurrentScene → here.
+		// In multiplayer, SceneManager.LoadScene only reloads the peer that
+		// pressed the button; the other stays on the end-game menu. Mirror
+		// waitThenReloadGame: RPC so every peer calls PhotonNetwork.LoadLevel.
+		public void RequestNetworkedReplay()
+		{
+			DismissEndGamePresentation();
+			if (PhotonNetwork.InRoom && photonView != null)
+			{
+				photonView.RPC(nameof(RPCReplayMatch), RpcTarget.All);
+				return;
+			}
+			PrepareScoresForRematch();
+			roundEnded = false;
+			ReloadMatchScene();
+		}
+
+		[PunRPC]
+		private void RPCReplayMatch()
+		{
+			DismissEndGamePresentation();
+			PrepareScoresForRematch();
+			roundEnded = false;
+			ReloadMatchScene();
+		}
+
+		private void DismissEndGamePresentation()
+		{
+			if (_endGameMenu == null) return;
+			var endAudioGo = _endGameMenu.transform.Find("EndGameAudio");
+			if (endAudioGo != null)
+			{
+				var src = endAudioGo.GetComponent<AudioSource>();
+				if (src != null) src.Stop();
+			}
+			_endGameMenu.SetActive(false);
+		}
+
+		private void PrepareScoresForRematch()
+		{
+			s_matchStartCountdownPlayed = false;
+			var keeper = ScoreKeeper.getInstance;
+			if (keeper != null)
+			{
+				keeper.clearScores();
+			}
+		}
+
+		private void ReloadMatchScene()
+		{
+			string sceneToLoad = string.IsNullOrEmpty(gameSceneName)
+				? SceneManager.GetActiveScene().name
+				: gameSceneName;
 
 			if (PhotonNetwork.InRoom)
 			{
-				// Every peer calls PhotonNetwork.LoadLevel locally — not
-				// just master. The kill RPC was AllViaServer (ordered)
-				// so both peers' coroutines start within RTT of each
-				// other. We do NOT rely on PUN's AutomaticallySyncScene
-				// because that fires off a "curScn property changed"
-				// event on joiners — reloading the same scene name
-				// doesn't change the property, so joiners never see the
-				// event and don't follow master.
-				//
-				// We can't use SceneManager.LoadScene either: PUN's
-				// scene-view IDs only get re-registered when scenes
-				// load via PhotonNetwork.LoadLevel, so the fresh
-				// scene's PhotonView returns null on RPC calls (paint
-				// broadcast NREs from the round-after-reload).
-				PhotonNetwork.LoadLevel(gameSceneName);
+				PhotonNetwork.LoadLevel(sceneToLoad);
 			}
 			else
 			{
-				SceneManager.LoadScene(gameSceneName);
+				SceneManager.LoadScene(sceneToLoad);
 			}
 		}
 
@@ -339,9 +538,32 @@ namespace Game {
 		// scene load (Awake — see below) so it doesn't leak across reloads.
 		public static bool CountdownActive { get; private set; }
 
+		// Photon room time when moving platforms may advance. -1 = frozen (MP wait / countdown).
+		// Both peers derive platform pose from (PhotonNetwork.Time - epoch) so join latency
+		// does not leave the host's platforms ahead of the guest's.
+		public static double PlatformMotionEpoch { get; private set; } = -1;
+
+		[PunRPC]
+		private void RPCSetPlatformMotionEpoch(double epoch)
+		{
+			PlatformMotionEpoch = epoch;
+		}
+
+		private void BeginPlatformMotionAtGo()
+		{
+			if (!PhotonNetwork.InRoom || photonView == null) return;
+			if (PhotonNetwork.IsMasterClient)
+			{
+				photonView.RPC(nameof(RPCSetPlatformMotionEpoch), RpcTarget.All, PhotonNetwork.Time);
+			}
+		}
+
 		IEnumerator startCountDown()
 		{
+			if (_countdownRunning) yield break;
+			_countdownRunning = true;
 			CountdownActive = true;
+			SetCountdownPhysicsFrozen(true);
 			disablePlayerControls(true);
 //			AudioSource audioSource = _audioSource.GetComponent<AudioSource>(); // used to also stop bg music
 //			audioSource.Stop();
@@ -368,6 +590,9 @@ namespace Game {
 			Debug.Log("GameManager: Player controls enabled");
 			disablePlayerControls(false);
 			CountdownActive = false;
+			SetCountdownPhysicsFrozen(false);
+			BeginPlatformMotionAtGo();
+			_countdownRunning = false;
 
 			yield return new WaitForSeconds(0.7f);
 			_countDownAnimation.SetActive(false);

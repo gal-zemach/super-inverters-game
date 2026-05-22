@@ -328,6 +328,19 @@ namespace Game{
 				direction = _playerView.facingLeft ? Vector2.left : Vector2.right;
 			}
 
+			// Slice 5 phase 2d: in a Photon room only the owning peer simulates
+			// the real shot (spawn + shell + recoil + the shot's own paint
+			// collision). Remote players are driven by replicated input, but
+			// their shot is shown via a visual-only ghost spawned through
+			// GameManager.RPCSpawnGhostShot — so they must not spawn a second,
+			// painting shot here. The shooting animation is still set by the
+			// FixedUpdate caller, so the remote player still animates.
+			if (PhotonNetwork.InRoom)
+			{
+				var pv = GetComponent<PhotonView>();
+				if (pv != null && !pv.IsMine) return;
+			}
+
 			Vector2 pos = _rigidbody2D.position;
 			if (EnableSFX) _sfx.PlayShoot();
 			float shooting_angle = direction.GetAngle();
