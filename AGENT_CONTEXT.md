@@ -144,6 +144,33 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append above the previous entry; never delete history. -->
 
+## 2026-05-15 — Slice 5 phase 2b/2c follow-up fixes (reload, paint determinism, countdown lock)
+
+**Session goal:** Fix the bugs that surfaced after the 2026-05-07 phase 2b/2c work once it got played more. Four commits, all on `Multiplayer`, all pushed.
+
+**What changed:**
+
+- **`ecc4f7b3` — Reduce KeyboardController shoot-log spam.** `Update` logged `"<player>: shot"` every frame the fire button was held (~60/sec in autoFire), burying death/RPC traces. Now tracks `_wasShootingLastFrame` and logs only on press/release transitions.
+
+- **`71c92d4f` — Fix paint-after-reload NREs + add `muteMusicForTesting`.** **Supersedes my 2026-05-07 `SceneManager.LoadScene` change in `waitThenReloadGame`.** That change avoided PUN's same-scene auto-sync limitation but introduced a worse bug: PUN's scene-PhotonView ID registration only runs through `PhotonNetwork.LoadLevel`. Using plain `SceneManager.LoadScene` left the freshly-loaded scene's `Game` PhotonView unregistered, so `GameManager.photonView` returned **null** on the next RPC — paint broadcasts NRE'd and platforms desynced after the first death. **Real fix: every peer (not just master) calls `PhotonNetwork.LoadLevel` locally.** The PlayerKilled RPC is `AllViaServer` (ordered), so both peers' coroutines fire within RTT and each peer's own `LoadLevel` does its PUN scene-view setup. This sidesteps both the auto-sync same-scene bug AND the scene-view-orphaning bug. Also added a `muteMusicForTesting` bool on GameManager.
+
+- **`d8ceccb4` — Enable AutomaticallySyncScene + deterministic grey platform color.** Two fixes:
+  - Joiner wasn't following master into `level_1-multiplayer` when the room filled — `PhotonNetwork.AutomaticallySyncScene` defaults to false and `LoadLevel` only auto-enables it on the caller (master). Now set to `true` explicitly in `MultiplayerBootstrap.Start` on every peer before connecting.
+  - **Moving-platform paint desync (a real bug in my phase 2b determinism I had missed):** `PlatformManager.Init` randomized grey platforms' starting color with `Random.Range`, which uses each Unity process's own RNG seed — two peers rolled different colors at scene load (platform black on one peer, white on the other), so my position-sorted network-id paint sync was painting onto mismatched base states. Now in a Photon room the grey color is derived from a deterministic hash of the platform's scene hierarchy path (identical across peers); single-player keeps `Random.Range`.
+
+- **`ef267b7e` — Lock player input during countdown in multiplayer.** `disablePlayerControls` iterated `_gameState.players` (from `FindGameObjectsWithTag` in `GameState.Awake`), which is empty in `level_1-multiplayer` (static players deleted). Players spawned by `MultiplayerSpawner` after the disable call could move during the countdown. Added a static `GameManager.CountdownActive` flag checked by `PlayerManager.Update`/`FixedUpdate` alongside `controlsDisabled`, so late-spawned players also respect the lock. Single-player unchanged.
+
+**Net effect:** the 2026-05-07 entry below describes the original phase 2b/2c implementation; the `waitThenReloadGame` part of it (`SceneManager.LoadScene` / master-only) is **no longer accurate** — see `71c92d4f` above for the current behavior (every peer calls `PhotonNetwork.LoadLevel`).
+
+**Still not done (carried over):**
+- **Phase 2d — visual shot ghosts on remote peers.** Still the main remaining Slice 5 feature. When peer A shoots, peer B sees the paint result but not the projectile flying. Plan unchanged: RPC the shot spawn params; receiver instantiates a ghost shot that flies but doesn't process paint.
+- Doublejump pivot + jump-land hover: cosmetic art polish, deferred.
+- `Game` in multiplayer scenes is a baked GameObject, not a prefab instance — each new multiplayer level needs a manual `PhotonView` add until that's cleaned up.
+
+**Next agent should:** start phase 2d (remote shot ghosts), then Slice 5 is feature-complete. Acknowledge context-warning convention first (user auto-memory).
+
+---
+
 ## 2026-05-07 — Slice 5 phases 2b + 2c (networked paint, death, level reload)
 
 **Agent session goal:** Resume Slice 5 from yesterday's phase 2a stop and land the two remaining gameplay-sync features so a multiplayer round is playable end-to-end.
