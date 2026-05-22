@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Controllers;
@@ -7,6 +7,7 @@ using Utils.Utils;
 
 
 namespace Game{
+	[DefaultExecutionOrder(100)]
 	public class PlayerManager : MonoBehaviour
 	{
 		private PlayerView _playerView;
@@ -61,6 +62,7 @@ namespace Game{
 		public Vector2 movingDirection; // public only for testing
 		public Vector2 shootingDirection;
 		private Vector2 lastNonZeroDirection;
+		private int _lastHorizontalAimDir = 1;
 
 		public bool isGrounded;
 		private bool canDoubleJump;
@@ -104,6 +106,7 @@ namespace Game{
 
 		void Start ()
 		{
+			_lastHorizontalAimDir = transform.position.x >= 0f ? 1 : -1;
 			_playerView.SetSpriteColor(_playerState.player_framework);
 
 			// layer of platforms for checking if grounded
@@ -137,25 +140,36 @@ namespace Game{
 			}
 			
 			updateGrounded();
-			if (isGrounded)
+		}
+
+		// After all Controller.Update calls so aim_direction() reflects this frame's input.
+		private void LateUpdate()
+		{
+			if (controlsDisabled || GameManager.CountdownActive) return;
+
+			updateGrounded();
+
+			updateDirection();
+
+			// Jump after aim merge so up-aim + Space stay in sync for animation layers.
+			foreach (var controller in controllers)
+			{
+				var behaviour = controller as MonoBehaviour;
+				if (behaviour != null && !behaviour.enabled) continue;
+				if (controller.jump())
+					tryToJump();
+			}
+
+			// Only end jump pose when grounded and not still rising (overlap can stay
+			// true for a few frames after takeoff).
+			if (isGrounded && _rigidbody2D.velocity.y <= 0f)
 			{
 				_playerView.isJumping = false;
 				_playerView.isDoubleJumping = false;
 			}
-			
-			updateDirection();
-			
-			// jumping moved here because it was not responsive enough in FixedUpdate (missed controller updates)
-			foreach (var controller in controllers)
-			{
-				if (controller.jump()){
-					tryToJump();
-				} 
-				else  {
-//					_playerView.isJumping = false;
-//					_playerView.isDoubleJumping = false;
-				}	
-			}
+
+			_playerView.isGrounded = isGrounded;
+			_playerView.ApplyAnimatorState();
 		}
 
 		void FixedUpdate()
@@ -169,9 +183,7 @@ namespace Game{
 					updateGrounded();
 
 					if (controller.getDown())
-					{
 						getOffPlatform();
-					}
 
 					move(movingDirection);
 
@@ -217,10 +229,14 @@ namespace Game{
 		{
 			bool movingDirChanged = false;
 			bool aimDirChanged = false;
+			bool anyAimInput = false;
 			Vector2 tempAimDir = Vector2.zero;
 			
 			foreach (var controller in controllers)
 			{
+				var behaviour = controller as MonoBehaviour;
+				if (behaviour != null && !behaviour.enabled) continue;
+
 				Vector2 tempMovingDir = controller.moving_direction();
 				if (tempMovingDir != Vector2.zero)
 				{
@@ -233,11 +249,23 @@ namespace Game{
 				{
 					shootingDirection = tempAimDir;
 					aimDirChanged = true;
+					anyAimInput = true;
 				}
 			}
 			if (!movingDirChanged) movingDirection = Vector2.zero;
 			
-			if (!aimDirChanged) shootingDirection = movingDirection;
+			if (!aimDirChanged)
+			{
+				// movingDirection is horizontal-only; don't replace steep up/down aim on landing.
+				if (movingDirection != Vector2.zero && Mathf.Abs(shootingDirection.y) < 0.5f)
+					shootingDirection = movingDirection;
+				else if (isGrounded && !anyAimInput)
+					shootingDirection = Vector2.zero;
+			}
+			else if (shootingDirection != Vector2.zero)
+			{
+				lastNonZeroDirection = shootingDirection;
+			}
 
 			// updating animation parameters
 			// vertical_dir is the aim's "verticalness" in [-1, 1] — the angle
@@ -245,13 +273,22 @@ namespace Game{
 			// raw shootingDirection.y) lets keyboard W+A produce 0.5 (up-diag)
 			// instead of 1.0 (up), so the up_diag/down_diag animation buckets
 			// actually trigger for keyboard input.
-			if (shootingDirection == Vector2.zero)
+			Vector2 animAim = shootingDirection;
+			if (animAim == Vector2.zero && !isGrounded)
+				animAim = lastNonZeroDirection;
+			if (animAim == Vector2.zero)
 				_playerView.vertical_dir = 0f;
 			else
-				_playerView.vertical_dir = Mathf.Atan2(shootingDirection.y, Mathf.Abs(shootingDirection.x)) / (Mathf.PI / 2f);
+				_playerView.vertical_dir = Mathf.Atan2(animAim.y, Mathf.Abs(animAim.x)) / (Mathf.PI / 2f);
+
 			_playerView.isMoving = isGrounded && !Mathf.Approximately(movingDirection.x, 0);
-			if (Mathf.Approximately(shootingDirection.x, 0)) _playerView.horizontal_dir = 0;
-			else _playerView.horizontal_dir = (int) Mathf.Sign(shootingDirection.x);
+			if (Mathf.Approximately(shootingDirection.x, 0))
+				_playerView.horizontal_dir = _lastHorizontalAimDir;
+			else
+			{
+				_playerView.horizontal_dir = (int) Mathf.Sign(shootingDirection.x);
+				_lastHorizontalAimDir = _playerView.horizontal_dir;
+			}
 		}
 		
 

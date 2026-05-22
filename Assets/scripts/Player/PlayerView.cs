@@ -1,6 +1,7 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Utils.Utils;
 
 namespace Game {
 	public class PlayerView : MonoBehaviour
@@ -28,15 +29,20 @@ namespace Game {
 		[HideInInspector] public bool isMoving;
 		[HideInInspector] public bool facingLeft;
 		[HideInInspector] public bool isLanding;
+		[HideInInspector] public bool isGrounded;
 
 		Dictionary<string, int> anim_layers = new Dictionary<string, int>();
 		
 		private int currentLayer;
+		// Animator sync target: not_shooting_2 drives timing for all other aim layers.
+		private int _referenceAimLayer;
 		
 		private string anim_not_shooting_prefix = "not_shooting_",  
 					   anim_shoot_prefix = "shooting_";
 
 		private int ANIM_DIR_NUMBER = 5;
+		private AnimationClip[] _idleClips = new AnimationClip[5];
+		private AnimationClip[] _idleShootClips = new AnimationClip[5];
 		
 		void Awake () {
 			Init();
@@ -46,6 +52,10 @@ namespace Game {
 			_spriteRenderer = _animationGameObject.GetComponent<SpriteRenderer>();
 			_animator = _animationGameObject.GetComponent<Animator>();
 			updateAnimLayerDictionary();
+			_referenceAimLayer = anim_layers[anim_not_shooting_prefix + 2];
+			currentLayer = _referenceAimLayer;
+			setActiveAimLayer(currentLayer);
+			cacheDirectionalIdleClips();
 			
 			crosshair = transform.Find(Values.PLAYER_CROSSHAIR_GAMEOBJ_NAME);
 			_crosshair_spriteRenderer = crosshair.GetComponent<SpriteRenderer>();
@@ -57,21 +67,54 @@ namespace Game {
 			_spriteRenderer.flipX = facingLeft;
 		}
 
-		void Update() {
-			if (isLanding)
-			{
-				isJumping = false;
-				isDoubleJumping = false;
-			}
-			
-			_animator.SetBool("isJumping", isJumping);
-			_animator.SetBool("isDoubleJumping", isDoubleJumping);
+		// Called from PlayerManager.LateUpdate after aim + jump so layer weights match this frame.
+		public void ApplyAnimatorState()
+		{
+			// Jump state uses the same side-facing clip on every aim layer; keep the
+			// aim overlay pose while airborne when aiming steeply up or down.
+			bool steepAim = Mathf.Abs(vertical_dir) > 0.5f;
+			bool suppressJumpAnim = (isJumping || isDoubleJumping) && steepAim;
+			// Sample steep aim whenever idle (in air, approaching land, or on ground).
+			bool useSteepAimSample = steepAim && !isMoving;
+			_animator.SetBool("isJumping", isJumping && !suppressJumpAnim);
+			_animator.SetBool("isDoubleJumping", isDoubleJumping && !suppressJumpAnim);
 			_animator.SetBool("isShooting", isShooting);
 			_animator.SetBool("isLanding", isLanding);
 			_animator.SetBool("isMoving", isMoving);
 			_animator.SetInteger("movingDir", horizontal_dir);
-			
+
 			changeAnimationLayer();
+			_animator.Update(0f);
+
+			if (useSteepAimSample)
+				applySteepAimPose();
+		}
+
+		private void cacheDirectionalIdleClips()
+		{
+			var controller = _animator.runtimeAnimatorController;
+			if (controller == null) return;
+			foreach (var clip in controller.animationClips)
+			{
+				if (clip.name.StartsWith("idle_shoot_")
+				    && int.TryParse(clip.name.Substring(11), out int shootIdx)
+				    && shootIdx >= 0 && shootIdx < ANIM_DIR_NUMBER)
+					_idleShootClips[shootIdx] = clip;
+				else if (clip.name.StartsWith("idle_")
+				         && int.TryParse(clip.name.Substring(5), out int idleIdx)
+				         && idleIdx >= 0 && idleIdx < ANIM_DIR_NUMBER)
+					_idleClips[idleIdx] = clip;
+			}
+		}
+
+		// Synced override layers keep the leader's horizontal idle visible; sample the
+		// direction clip directly so steep aim shows the correct sprite in air and on land.
+		private void applySteepAimPose()
+		{
+			int idx = animGetDirectionIndex(vertical_dir);
+			var clip = isShooting ? _idleShootClips[idx] : _idleClips[idx];
+			if (clip != null)
+				clip.SampleAnimation(_animationGameObject, 0f);
 		}
 
 		void FixedUpdate() {
@@ -139,20 +182,23 @@ namespace Game {
 		
 		private void changeAnimationLayer()
 		{
-			// assembling layer name
 			var newAnimLayerName = isShooting ? anim_shoot_prefix : anim_not_shooting_prefix;
 			newAnimLayerName = newAnimLayerName + animGetDirectionIndex(vertical_dir);
 			int newLayer = anim_layers[newAnimLayerName];
-			
-			// updating layer visibility
 			if (newLayer != currentLayer)
+				setActiveAimLayer(newLayer);
+		}
+
+		private void setActiveAimLayer(int activeLayer)
+		{
+			// Synced aim layers (not_shooting_0, shooting_4, etc.) mirror not_shooting_2.
+			// The reference layer must stay at weight 1 or overrides never show.
+			foreach (var entry in anim_layers)
 			{
-//				Debug.Log(gameObject.name + ": newLayer= " + newAnimLayerName + ", " + newLayer);
-				_animator.SetLayerWeight(newLayer, 1);
-				_animator.SetLayerWeight(currentLayer, 0);
-			
-				currentLayer = newLayer;
+				float weight = entry.Value == _referenceAimLayer || entry.Value == activeLayer ? 1f : 0f;
+				_animator.SetLayerWeight(entry.Value, weight);
 			}
+			currentLayer = activeLayer;
 		}
 
 		private int animGetDirectionIndex(float yDir)

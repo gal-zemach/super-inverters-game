@@ -368,6 +368,7 @@ MonoBehaviour:
   isMoving: 0
   facingLeft: 0
   isLanding: 0
+  isGrounded: 0
 --- !u!114 &114474660210966542
 MonoBehaviour:
   m_ObjectHideFlags: 0

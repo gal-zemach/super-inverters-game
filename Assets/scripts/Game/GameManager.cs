@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Photon.Pun;
@@ -166,7 +166,7 @@ namespace Game {
 			{
 				// Input-only lock while waiting for the second peer. Do NOT disable
 				// Rigidbody2D simulation here — spawn Y is above the platform and
-				// simulated=false leaves the avatar hovering in mid-air (log 5efe84).
+				// simulated=false leaves the avatar hovering in mid-air.
 				if (CountNetworkedPlayersInScene() > 0)
 				{
 					CountdownActive = true;
