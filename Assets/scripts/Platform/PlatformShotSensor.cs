@@ -36,11 +36,8 @@ namespace Game{
 		void OnTriggerEnter2D(Collider2D ob) {
 			if (ob.CompareTag(Values.SHOT_TAG)) {
 //				Debug.Log("PlatformShotSensor: detected shot");
-				ShotState shot_state = ob.gameObject.GetComponent<ShotState>();
-				// Phase 2d: ghost shots are visual-only; paint arrives via the
-				// shooter's RPCPaintPlatform, so don't re-paint here.
-				if (shot_state != null && shot_state.isGhost) return;
-				platform_view.UpdateHit(shot_state.shot_framework);
+				Framework framework = ob.gameObject.GetComponent<ShotState>().shot_framework;
+				platform_view.UpdateHit(framework);
 			}
 		}
 

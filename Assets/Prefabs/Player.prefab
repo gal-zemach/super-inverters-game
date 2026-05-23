@@ -253,8 +253,7 @@ MonoBehaviour:
   minimalDoubleJumpVelocity: 17
   RegularGravityScale: 4
   FallingGravityScale: 2
-  turnsBetweenShots: 2
-  burstFireDurationSeconds: 0.5
+  turnsBetweenShots: 8
   shellAngleRange: 10
   recoil: 0.1
   movingDirection: {x: 0, y: 0}

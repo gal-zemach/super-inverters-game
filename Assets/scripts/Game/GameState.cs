@@ -35,14 +35,10 @@ namespace Game{
 
 		public void initializeScores()
 		{
-			// Seed both Black and White unconditionally. In single-player the
-			// players array (from scene-baked instances tagged "player") would
-			// give us the same two entries; in multiplayer the players are
-			// PhotonNetwork.Instantiate'd at runtime so the scene-scan finds
-			// nothing at this point. Without these seeds, ScoreKeeper.decreaseScore
-			// is a no-op (ContainsKey returns false) and lives never tick down.
-			scoreKeeper.setScore("BlackPlayer", startLives);
-			scoreKeeper.setScore("WhitePlayer", startLives);
+			foreach (var player in players)
+			{	
+				scoreKeeper.setScore(player.name, startLives);
+			}
 		}
 
 		public bool hasNoLives(string killedPlayerName)
@@ -53,13 +49,6 @@ namespace Game{
 		public void decreaseScore(string playerName)
 		{
 			scoreKeeper.decreaseScore(playerName);
-		}
-
-		// Force the lives count to an authoritative value (used by the
-		// master-authoritative multiplayer kill path to keep every peer in sync).
-		public void setScore(string playerName, int lives)
-		{
-			scoreKeeper.setScore(playerName, lives);
 		}
 
 		public int getScore(string playerName)

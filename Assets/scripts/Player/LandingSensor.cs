@@ -26,7 +26,7 @@ namespace Game {
 
 		// Update is called once per frame
 		void Update () {
-			if (body.linearVelocity.y <= -1 && colliding) {
+			if (body.velocity.y <= -1 && colliding) {
 				player_view.isLanding = true;
 			} else if (player_manager.isGrounded) {
 				player_view.isLanding = false;
