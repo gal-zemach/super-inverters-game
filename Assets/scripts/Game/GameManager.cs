@@ -1,8 +1,5 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using Multiplayer;
-using Photon.Pun;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -12,10 +9,7 @@ namespace Game {
 
 	public enum Framework {GREY, BLACK, WHITE}
 
-	// Inherits MonoBehaviourPunCallbacks so we can call photonView.RPC and receive
-	// OnLeftRoom for networked menu exit. Game.prefab needs a PhotonView component
-	// (added 2026-05-07).
-	public class GameManager : MonoBehaviourPunCallbacks {
+	public class GameManager : MonoBehaviour {
 
 		private GameView _gameView;
 		private GameState _gameState;
@@ -41,49 +35,16 @@ namespace Game {
 		[SerializeField]
 		public bool countDownEveryRound = false;
 
-		[SerializeField, Tooltip("Disable the scene's Audio Source GameObject in Awake. Useful during multiplayer development so the music doesn't restart on every PhotonNetwork.LoadLevel reload. Leave unchecked for shipping / single-player.")]
-		public bool muteMusicForTesting = false;
-
-
+		
 		private bool roundEnded;
-		// Master-authoritative latch: true once the master has declared a winner,
-		// so a near-simultaneous second final kill can't declare a second winner.
-		// Reset on scene load (Awake) so rematch / next round starts fresh.
-		private bool _matchOver;
-		private bool _countdownRunning;
 		private GameObject _endGameMenu;
 		private GameObject _audioSource;
 		private GameObject _countDownAnimation;
 		private GameObject _pause_menu;
-
-		private const int MultiplayerPlayerCount = 2;
-		private const float WaitForPlayersTimeoutSeconds = 10f;
-
-		// Survives PhotonNetwork.LoadLevel round reloads while still in the room.
-		// Mid-round reloads re-run Start() but must not replay Ready/Set/Fight.
-		// Cleared on rematch (Replay) and when not in a room (lobby / disconnect).
-		private static bool s_matchStartCountdownPlayed;
-		private static bool s_pendingExitToMainMenu;
-		private const string MainMenuSceneName = "main_menu";
 		
 		
 		void Awake ()
 		{
-			// Reset the static countdown flag on every scene load so it can't
-			// leak across reloads (would otherwise stay true forever if a
-			// scene reloads mid-coroutine).
-			CountdownActive = false;
-			_countdownRunning = false;
-			if (!PhotonNetwork.InRoom)
-			{
-				s_matchStartCountdownPlayed = false;
-				PlatformMotionEpoch = -1;
-			}
-			else
-			{
-				PlatformMotionEpoch = -1;
-			}
-
 			_gameState = GetComponent<GameState>();
 			_gameView = GetComponent<GameView>();
 			_shotFactory = GetComponent<ShotFactory>();
@@ -101,16 +62,11 @@ namespace Game {
 			UpdateLayerNames();	// must happen in Awake otherwise platforms are set to Default layer
 			
 			roundEnded = false;
-			_matchOver = false;
 			_endGameMenu = GameObject.Find(Values.END_GAME_MENU_GAMEOBJ_NAME);
 			if (_endGameMenu != null) _endGameMenu.SetActive(false);
 			
 			_audioSource = GameObject.Find(Values.AUDIO_SOURCE_GAMEOBJ_NAME);
-			if (_audioSource != null && muteMusicForTesting)
-			{
-				_audioSource.SetActive(false);
-			}
-
+			
 			_countDownAnimation = GameObject.Find(Values.COUNTDOWN_ANIM_GAMEOBJ_NAME);
 			if (_countDownAnimation != null)
 			{
@@ -120,168 +76,12 @@ namespace Game {
 
 		private void Start()
 		{
-			AssignPlatformNetworkIds();
-
-			// Never use the single-player countdown path on MP levels — that scene
-			// has countDownEveryRound=1 and would start the countdown before
-			// PhotonNetwork.Instantiate spawns anyone when InRoom is briefly false.
-			if (IsMultiplayerLevel())
-			{
-				// Round reload (death → LoadLevel) must not restart countdown;
-				// level_1-multiplayer has countDownEveryRound=1 for SP semantics only.
-				if (!s_matchStartCountdownPlayed)
-				{
-					StartCoroutine(MultiplayerCountdownLoop());
-				}
-				return;
-			}
-
-			TryStartCountdownSinglePlayer();
-		}
-
-		private static bool IsMultiplayerLevel()
-		{
-			return SceneManager.GetActiveScene().name == Multiplayer.MultiplayerSceneNames.GameSceneName;
-		}
-
-		private void TryStartCountdownSinglePlayer()
-		{
 			if (countDown && _countDownAnimation != null)
 			{
 				if (countDownEveryRound || _gameState.isGameStart())
 				{
-					if (_countdownRunning) return;
 					Debug.Log("GameManager: Paying CountDown");
-					StartCoroutine(startCountDown());
-				}
-			}
-		}
-
-		// Master waits until both networked avatars exist, then RPCs all peers to run
-		// the same countdown (fixes host timing out before joiner's scene loads).
-		private IEnumerator MultiplayerCountdownLoop()
-		{
-			if (!countDown || _countDownAnimation == null)
-			{
-				Debug.LogWarning("GameManager: Multiplayer countdown disabled (countDown off or CountDownAnimation missing).");
-				yield break;
-			}
-
-			yield return null;
-
-			// Scene Start() can run before PUN finishes joining the room; never treat
-			// !IsMasterClient as "joiner" until we are actually in a room.
-			float joinRoomElapsed = 0f;
-			while (!PhotonNetwork.InRoom && joinRoomElapsed < WaitForPlayersTimeoutSeconds)
-			{
-				joinRoomElapsed += Time.deltaTime;
-				yield return null;
-			}
-
-			if (!PhotonNetwork.InRoom)
-			{
-				Debug.LogWarning("GameManager: Multiplayer countdown skipped (not in a Photon room).");
-				yield break;
-			}
-
-			if (PhotonNetwork.IsMasterClient)
-				yield return MasterWaitThenBroadcastCountdown();
-			else
-				yield return WaitForSyncedCountdownRpc();
-		}
-
-		private IEnumerator WaitForSyncedCountdownRpc()
-		{
-			float waitElapsed = 0f;
-			CountdownActive = false;
-			while (!s_matchStartCountdownPlayed)
-			{
-				waitElapsed += Time.deltaTime;
-
-				if (IsRoomFull() && waitElapsed > WaitForPlayersTimeoutSeconds)
-				{
-					Debug.LogWarning("GameManager: countdown RPC not received — match start aborted.");
-					yield break;
-				}
-
-				yield return null;
-			}
-		}
-
-		private IEnumerator MasterWaitThenBroadcastCountdown()
-		{
-			CountdownActive = false;
-			while (!IsReadyForMatchCountdown())
-				yield return null;
-
-			if (_countdownRunning || s_matchStartCountdownPlayed) yield break;
-
-			if (photonView != null)
-			{
-				Debug.Log($"GameManager: room full, {CountNetworkedPlayersInScene()} avatars — syncing countdown via RPC.");
-				photonView.RPC(nameof(RPCStartMatchCountdown), RpcTarget.All);
-			}
-			else
-			{
-				Debug.LogWarning("GameManager: No PhotonView — starting countdown locally only.");
-				RPCStartMatchCountdown();
-			}
-		}
-
-		private static bool IsRoomFull()
-		{
-			return PhotonNetwork.InRoom
-			       && PhotonNetwork.CurrentRoom.PlayerCount >= MultiplayerPlayerCount;
-		}
-
-		private static bool IsReadyForMatchCountdown()
-		{
-			return IsRoomFull() && CountNetworkedPlayersInScene() >= MultiplayerPlayerCount;
-		}
-
-		private static void ResetLocalPlayersToSpawn()
-		{
-			var spawner = Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
-			spawner?.ResetLocalPlayerToSpawnPosition();
-		}
-
-		[PunRPC]
-		private void RPCStartMatchCountdown()
-		{
-			if (s_matchStartCountdownPlayed || _countdownRunning) return;
-			s_matchStartCountdownPlayed = true;
-
-			ResetLocalPlayersToSpawn();
-			StartCoroutine(startCountDown());
-		}
-
-		private static int CountNetworkedPlayersInScene()
-		{
-			int count = 0;
-			foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
-			{
-				if (go.GetComponentInChildren<PhotonView>() != null) count++;
-			}
-			return count;
-		}
-
-		// Freeze every visible player during countdown (local + remote).
-		private void SetCountdownPhysicsFrozen(bool frozen)
-		{
-			foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
-			{
-				var rb = go.GetComponent<Rigidbody2D>();
-				if (rb == null) continue;
-
-				var pv = go.GetComponentInChildren<PhotonView>();
-				if (frozen)
-				{
-					rb.linearVelocity = Vector2.zero;
-					rb.simulated = false;
-				}
-				else if (pv == null || pv.IsMine)
-				{
-					rb.simulated = true;
+					StartCoroutine(startCountDown());					
 				}
 			}
 		}
@@ -296,26 +96,6 @@ namespace Game {
 
 		public void SpawnShot(Vector2 position, Vector2 startVelocity, float rotation, Framework framework) {
 			GameObject shot = _shotFactory.MakeObject(position, startVelocity,rotation,framework);
-
-			// Slice 5 phase 2d: this peer just spawned its own real shot (which
-			// flies and paints locally + broadcasts paint via phase 2b). Tell
-			// the other peers to spawn a visual-only ghost so they see the shot
-			// fly too. Only the owning peer reaches SpawnShot (PlayerManager.shoot
-			// gates remote players out in a room), so this never double-fires.
-			if (PhotonNetwork.InRoom)
-			{
-				photonView.RPC(nameof(RPCSpawnGhostShot), RpcTarget.Others,
-					position, startVelocity, rotation, (int)framework);
-			}
-		}
-
-		[PunRPC]
-		private void RPCSpawnGhostShot(Vector2 position, Vector2 startVelocity, float rotation, int frameworkInt)
-		{
-			// Ghost = visual-only; the `true` flag makes the platform collision
-			// handlers skip UpdateHit so it doesn't re-paint (paint already
-			// arrives via RPCPaintPlatform).
-			_shotFactory.MakeObject(position, startVelocity, rotation, (Framework)frameworkInt, true);
 		}
 
 		public void SpawnShell(Vector2 position, Vector2 startVelocity, float rotation, Framework framework, Collider2D shooterCollider) {
@@ -338,6 +118,7 @@ namespace Game {
 			if (obj.CompareTag(Values.PLATFORM_BODY_TAG)) {
 				SetLayerRecursively(obj, framework);
 			}
+			
 			else if (obj.CompareTag(Values.PLAYER_TAG)) obj.layer = framework == Framework.BLACK ? black_player_layer : 
 														   white_player_layer;
 		}
@@ -356,99 +137,24 @@ namespace Game {
 
 		public void PlayerKilled(GameObject killedPlayer)
 		{
-			// Networked-instantiated objects get a "(Clone)" suffix on their
-			// name; strip it so the score / win-condition logic (which keys
-			// off the literal strings "BlackPlayer" / "WhitePlayer") matches
-			// in both single-player and multiplayer.
-			string playerName = killedPlayer.name.Replace("(Clone)", "").Trim();
-
-			if (PhotonNetwork.InRoom)
-			{
-				// Master-authoritative kill handling. The dying peer only REPORTS
-				// the death to the master; the master owns the score, decides
-				// round-respawn vs. game-over, and broadcasts the authoritative
-				// result to everyone. Previously each peer decremented its own
-				// ScoreKeeper and decided game-over independently, so the two
-				// peers could drift and disagree on who lost (one logged
-				// "BlackPlayer Lost", the other "WhitePlayer Lost").
-				photonView.RPC(nameof(RPCReportKillToMaster), RpcTarget.MasterClient, playerName);
-				return;
-			}
-
-			DoPlayerKilled(playerName);
-		}
-
-		// Master only: apply the kill to the authoritative score, then broadcast
-		// the resulting lives count + winner (if any) to every peer so all clients
-		// end the match together for the same winner.
-		[PunRPC]
-		private void RPCReportKillToMaster(string killedPlayerName)
-		{
-			if (!PhotonNetwork.IsMasterClient) return;
-			if (CountdownActive) return;
-			if (_matchOver) return;  // ignore a near-simultaneous second final kill
-
-			_gameState.decreaseScore(killedPlayerName);
-			int remainingLives = _gameState.getScore(killedPlayerName);
-
-			int winPlayerId = -1;
-			if (remainingLives <= 0 && _endGameMenu != null)
-			{
-				_matchOver = true;
-				winPlayerId = WinnerIdFor(killedPlayerName);
-			}
-
-			photonView.RPC(nameof(RPCApplyKillResult), RpcTarget.All,
-				killedPlayerName, remainingLives, winPlayerId);
-		}
-
-		// Every peer (incl. master): force the local score to the master's
-		// authoritative value, refresh the HUD, then either end the match for the
-		// master-chosen winner or respawn the local player for a round death.
-		[PunRPC]
-		private void RPCApplyKillResult(string killedPlayerName, int remainingLives, int winPlayerId)
-		{
-			_gameState.setScore(killedPlayerName, remainingLives);
-			_gameView.decreaseScore(killedPlayerName); // animated -1 life
-			_gameView.updateScore();                   // hard-correct any drift to the authoritative count
-
-			if (winPlayerId > 0 && _endGameMenu != null)
-			{
-				_matchOver = true;
-				Debug.Log(killedPlayerName + " Lost");
-				endGame(winPlayerId);
-			}
-			else
-			{
-				HandleMultiplayerRoundDeath(killedPlayerName);
-			}
-		}
-
-		// White (id 2) wins when Black runs out of lives; Black (id 1) wins when White does.
-		private static int WinnerIdFor(string killedPlayerName)
-		{
-			if (killedPlayerName == "BlackPlayer") return 2;
-			if (killedPlayerName == "WhitePlayer") return 1;
-			return 0;
-		}
-
-		// Single-player kill path. (Multiplayer goes through the master-authoritative
-		// RPCReportKillToMaster / RPCApplyKillResult pair above.)
-		private void DoPlayerKilled(string killedPlayerName)
-		{
-			if (CountdownActive) return;
-
-			if (roundEnded) return;  // avoid double reload when two players die at once
+			if (roundEnded) return;  // This is to solve case where 2 players died one after the other
+			
 			roundEnded = true;
-
-			_gameState.decreaseScore(killedPlayerName);
-			_gameView.decreaseScore(killedPlayerName);
+			_gameState.decreaseScore(killedPlayer.name);
+			_gameView.decreaseScore(killedPlayer.name);
+//			_gameView.updateScore();
 
 			// added _endGameMenu null check for testing purposes, so if you don't have the end game menu you can keep playing forever.
-			if (_gameState.hasNoLives(killedPlayerName) && _endGameMenu != null)
+			if (_gameState.hasNoLives(killedPlayer.name) && _endGameMenu != null)
 			{
-				int winPlayerId = WinnerIdFor(killedPlayerName);
-				Debug.Log(killedPlayerName + " Lost");
+				Debug.Log(killedPlayer.name + " Lost");
+				int winPlayerId = 0;
+				if (killedPlayer.name == "BlackPlayer") {
+					winPlayerId = 2; // white player wins
+				}
+				else if (killedPlayer.name == "WhitePlayer") {
+					winPlayerId = 1; // black player wins
+				}
 				endGame(winPlayerId);
 			}
 			else
@@ -458,270 +164,10 @@ namespace Game {
 			}
 		}
 
-		private void HandleMultiplayerRoundDeath(string killedPlayerName)
-		{
-			var spawner = Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
-			if (spawner != null && spawner.IsLocalPlayer(killedPlayerName))
-			{
-				spawner.ForceRespawn();
-			}
-		}
-
-		// --- Slice 5 phase 2b: networked platform paint ---------------------
-		// Each peer's local shots only exist on the firing peer's machine, so
-		// only the shooter's PlatformShotSensor detects the collision and
-		// triggers UpdateHit -> UpdateFramework. The other peer's view of the
-		// same platform stays the original color, which causes physics
-		// divergence (one peer falls through, the other doesn't).
-		//
-		// Fix: when a platform actually flips color (UpdateHit's threshold
-		// path), the shooter's PlatformManager calls BroadcastPaintPlatform
-		// with the platform's deterministic networkId. RPCPaintPlatform fires
-		// on remote peers and re-applies the color + collision-layer change
-		// without re-broadcasting.
-		//
-		// Platform networkIds are assigned at scene start by sorting all
-		// PlatformManager instances by initial position (x then y). Both
-		// peers run the same sort on the same scene, so each platform has
-		// the same id on every peer.
-
-		private Dictionary<int, PlatformManager> _platformsById = new Dictionary<int, PlatformManager>();
-
-		private void AssignPlatformNetworkIds()
-		{
-			// Sort by hierarchy path (full GameObject path from scene root)
-			// rather than by position + InstanceID. The path is identical on
-			// both peers because they load the same scene file; InstanceID
-			// is process-local and DIFFERS between Unity instances, which
-			// caused id drift for platforms at identical positions —
-			// peer A's "id 7" pointed at a different physical platform than
-			// peer B's "id 7", so paint RPCs landed on the wrong platform.
-			var sorted = FindObjectsOfType<PlatformManager>()
-				.OrderBy(p => GetHierarchyPath(p.transform), System.StringComparer.Ordinal)
-				.ToArray();
-
-			_platformsById.Clear();
-			for (int i = 0; i < sorted.Length; i++)
-			{
-				sorted[i].networkId = i;
-				_platformsById[i] = sorted[i];
-				Debug.Log($"[Platform IDs] {i}: {GetHierarchyPath(sorted[i].transform)} at {sorted[i].transform.position}");
-			}
-		}
-
-		private static string GetHierarchyPath(Transform t)
-		{
-			var sb = new System.Text.StringBuilder();
-			while (t != null)
-			{
-				if (sb.Length > 0) sb.Insert(0, "/");
-				sb.Insert(0, t.name);
-				t = t.parent;
-			}
-			return sb.ToString();
-		}
-
-		private const float SpawnPlatformRayDistance = 12f;
-
-		// Paint the platform under a player spawn so respawns don't fall through
-		// a platform that was shot to the opposite color during the round.
-		public void EnsureSpawnPlatformMatchesPlayer(Framework playerFramework, Vector2 spawnWorldPos)
-		{
-			PlatformManager platform = FindPlatformBelow(spawnWorldPos);
-			if (platform == null)
-			{
-				Debug.LogWarning(
-					$"GameManager: no platform under spawn {spawnWorldPos} for {playerFramework}.");
-				return;
-			}
-
-			var state = platform.GetComponent<PlatformState>();
-			if (state != null && state.platform_framework == playerFramework)
-				return;
-
-			platform.ApplyPaintFromNetwork(playerFramework);
-			if (PhotonNetwork.InRoom && platform.networkId >= 0)
-				BroadcastPaintPlatform(platform.networkId, playerFramework);
-		}
-
-		private static PlatformManager FindPlatformBelow(Vector2 worldPos)
-		{
-			PlatformManager best = null;
-			float bestDist = float.MaxValue;
-
-			foreach (var hit in Physics2D.RaycastAll(worldPos, Vector2.down, SpawnPlatformRayDistance))
-			{
-				var platform = hit.collider.GetComponentInParent<PlatformManager>();
-				if (platform == null) continue;
-				if (hit.distance < bestDist)
-				{
-					bestDist = hit.distance;
-					best = platform;
-				}
-			}
-
-			if (best != null) return best;
-
-			// Spawn point can sit slightly inside the collider; try upward as well.
-			foreach (var hit in Physics2D.RaycastAll(worldPos, Vector2.up, 2f))
-			{
-				var platform = hit.collider.GetComponentInParent<PlatformManager>();
-				if (platform == null) continue;
-				if (hit.distance < bestDist)
-				{
-					bestDist = hit.distance;
-					best = platform;
-				}
-			}
-
-			return best;
-		}
-
-		public void BroadcastPaintPlatform(int platformNetworkId, Framework framework)
-		{
-			if (!PhotonNetwork.InRoom) return;
-			if (platformNetworkId < 0) return;
-			// Plain Others (not OthersBuffered) — buffered RPCs would replay
-			// onto the fresh scene after a PhotonNetwork.LoadLevel reload,
-			// pre-painting platforms before the new round starts.
-			photonView.RPC(nameof(RPCPaintPlatform), RpcTarget.Others, platformNetworkId, (int)framework);
-		}
-
-		[PunRPC]
-		private void RPCPaintPlatform(int platformNetworkId, int frameworkInt)
-		{
-			if (!_platformsById.TryGetValue(platformNetworkId, out var platform))
-			{
-				Debug.LogWarning($"GameManager: RPCPaintPlatform got unknown id {platformNetworkId}.");
-				return;
-			}
-			platform.ApplyPaintFromNetwork((Framework)frameworkInt);
-		}
-
 		IEnumerator waitThenReloadGame()
 		{
 			yield return new WaitForSeconds(secondsToNewRound);
-			ReloadMatchScene();
-		}
-
-		// End-game menu Replay button → SceneLoader.ReloadCurrentScene → here.
-		// In multiplayer, SceneManager.LoadScene only reloads the peer that
-		// pressed the button; the other stays on the end-game menu. Mirror
-		// waitThenReloadGame: RPC so every peer calls PhotonNetwork.LoadLevel.
-		public void RequestNetworkedReplay()
-		{
-			DismissEndGamePresentation();
-			if (PhotonNetwork.InRoom && photonView != null)
-			{
-				photonView.RPC(nameof(RPCReplayMatch), RpcTarget.All);
-				return;
-			}
-			PrepareScoresForRematch();
-			roundEnded = false;
-			ReloadMatchScene();
-		}
-
-		[PunRPC]
-		private void RPCReplayMatch()
-		{
-			DismissEndGamePresentation();
-			PrepareScoresForRematch();
-			roundEnded = false;
-			ReloadMatchScene();
-		}
-
-		public void RequestNetworkedExitToMainMenu()
-		{
-			DismissEndGamePresentation();
-			RestoreGameplayTimeScale();
-
-			if (PhotonNetwork.InRoom && photonView != null)
-			{
-				photonView.RPC(nameof(RPCExitToMainMenu), RpcTarget.All);
-				return;
-			}
-
-			s_pendingExitToMainMenu = true;
-			LoadMainMenuScene();
-		}
-
-		[PunRPC]
-		private void RPCExitToMainMenu()
-		{
-			DismissEndGamePresentation();
-			RestoreGameplayTimeScale();
-			s_pendingExitToMainMenu = true;
-			s_matchStartCountdownPlayed = false;
-			roundEnded = false;
-
-			var spawner = Object.FindObjectOfType<MultiplayerSpawner>();
-			spawner?.ResetSessionSpawnState();
-			MultiplayerColorAssignment.ClearLocalColorClaim();
-
-			if (PhotonNetwork.InRoom)
-				PhotonNetwork.LeaveRoom();
-			else
-				LoadMainMenuScene();
-		}
-
-		public override void OnLeftRoom()
-		{
-			if (!s_pendingExitToMainMenu) return;
-			s_pendingExitToMainMenu = false;
-			LoadMainMenuScene();
-		}
-
-		private void RestoreGameplayTimeScale()
-		{
-			Time.timeScale = 1f;
-			if (_pause_menu != null && _pause_menu.activeSelf)
-				_pause_menu.SetActive(false);
-		}
-
-		private static void LoadMainMenuScene()
-		{
-			s_matchStartCountdownPlayed = false;
-			s_pendingExitToMainMenu = false;
-			CountdownActive = false;
-			SceneManager.LoadScene(MainMenuSceneName);
-		}
-
-		private void DismissEndGamePresentation()
-		{
-			if (_endGameMenu == null) return;
-			var endAudioGo = _endGameMenu.transform.Find("EndGameAudio");
-			if (endAudioGo != null)
-			{
-				var src = endAudioGo.GetComponent<AudioSource>();
-				if (src != null) src.Stop();
-			}
-			_endGameMenu.SetActive(false);
-		}
-
-		private void PrepareScoresForRematch()
-		{
-			s_matchStartCountdownPlayed = false;
-			var keeper = ScoreKeeper.getInstance;
-			if (keeper != null)
-			{
-				keeper.clearScores();
-			}
-		}
-
-		private void ReloadMatchScene()
-		{
-			string sceneToLoad = string.IsNullOrEmpty(gameSceneName)
-				? SceneManager.GetActiveScene().name
-				: gameSceneName;
-
-			if (PhotonNetwork.InRoom)
-			{
-				PhotonNetwork.LoadLevel(sceneToLoad);
-			}
-			else
-			{
-				SceneManager.LoadScene(sceneToLoad);
-			}
+			SceneManager.LoadScene(gameSceneName);
 		}
 
 		// I moved all the action
@@ -741,40 +187,8 @@ namespace Game {
 			Destroy(_audioSource); // This is here so the audio will stop only after the menu appeared (because the menu has its own audio)
 		}
 		
-		// Global flag every PlayerManager checks each frame. Used in addition
-		// to the per-player disablePlayerControls/_gameState.players path
-		// because in multiplayer the players are PhotonNetwork.Instantiate'd
-		// at runtime and aren't in _gameState.players at GameState.Awake time,
-		// so the per-player disable was a no-op there. Reset to false at
-		// scene load (Awake — see below) so it doesn't leak across reloads.
-		public static bool CountdownActive { get; private set; }
-
-		// Photon room time when moving platforms may advance. -1 = frozen (MP wait / countdown).
-		// Both peers derive platform pose from (PhotonNetwork.Time - epoch) so join latency
-		// does not leave the host's platforms ahead of the guest's.
-		public static double PlatformMotionEpoch { get; private set; } = -1;
-
-		[PunRPC]
-		private void RPCSetPlatformMotionEpoch(double epoch)
-		{
-			PlatformMotionEpoch = epoch;
-		}
-
-		private void BeginPlatformMotionAtGo()
-		{
-			if (!PhotonNetwork.InRoom || photonView == null) return;
-			if (PhotonNetwork.IsMasterClient)
-			{
-				photonView.RPC(nameof(RPCSetPlatformMotionEpoch), RpcTarget.All, PhotonNetwork.Time);
-			}
-		}
-
 		IEnumerator startCountDown()
 		{
-			if (_countdownRunning) yield break;
-			_countdownRunning = true;
-			CountdownActive = true;
-			SetCountdownPhysicsFrozen(true);
 			disablePlayerControls(true);
 //			AudioSource audioSource = _audioSource.GetComponent<AudioSource>(); // used to also stop bg music
 //			audioSource.Stop();
@@ -800,11 +214,7 @@ namespace Game {
 			
 			Debug.Log("GameManager: Player controls enabled");
 			disablePlayerControls(false);
-			CountdownActive = false;
-			SetCountdownPhysicsFrozen(false);
-			BeginPlatformMotionAtGo();
-			_countdownRunning = false;
-
+			
 			yield return new WaitForSeconds(0.7f);
 			_countDownAnimation.SetActive(false);
 		}

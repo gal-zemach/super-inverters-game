@@ -1,18 +1,11 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using Photon.Pun;
 using UnityEngine;
 using Utils.Utils;
 
 
 namespace Game{
 	public class PlatformManager : MonoBehaviour {
-
-		// Slice 5 phase 2b: deterministic per-platform id assigned by
-		// GameManager.AssignPlatformNetworkIds at scene start. Used as the
-		// key in the paint RPC so both peers know which platform is being
-		// repainted. -1 = unassigned (single-player path doesn't touch it).
-		[HideInInspector] public int networkId = -1;
 
 		[SerializeField] protected List<Transform> points;
 
@@ -69,59 +62,12 @@ namespace Game{
 
 			if (init_platform_framework == Framework.GREY)
 			{
-				if (PhotonNetwork.InRoom)
-				{
-					// In multiplayer, peers MUST agree on the random color
-					// for grey platforms. Random.Range uses each Unity
-					// process's own seed, so two peers would roll different
-					// colors and the platform would start desynced (host
-					// sees black, joiner sees white). Use a deterministic
-					// hash of the platform's scene hierarchy path instead —
-					// both peers load the same scene file, so they compute
-					// the same hash and pick the same color.
-					string path = GetHierarchyPath(transform);
-					int h = StableHash(path);
-					init_platform_framework = (h & 1) == 0 ? Framework.BLACK : Framework.WHITE;
-					Debug.Log($"[Grey Platform Init] PATH='{path}' hash={h} → {init_platform_framework} (InRoom=true)");
-				}
-				else
-				{
-					init_platform_framework = (Framework) Random.Range(1, 3);
-					Debug.Log($"[Grey Platform Init] {gameObject.name} random → {init_platform_framework} (InRoom=false)");
-				}
+				init_platform_framework = (Framework) Random.Range(1, 3);
 			}
 
 			InitState();
 			UpdateFramework(init_platform_framework);
 			UpdateSegmentPeriod();
-		}
-
-		// Process-independent string hash. C#'s string.GetHashCode() is not
-		// guaranteed stable across .NET runtimes, which could let two peers
-		// running different mono variants (e.g. Editor vs WebGL build) disagree.
-		// FNV-style polynomial hash is fully deterministic from the character
-		// codes alone.
-		private static int StableHash(string s)
-		{
-			int h = 17;
-			foreach (char c in s) h = h * 31 + c;
-			return h & 0x7FFFFFFF;
-		}
-
-		// Build the full scene hierarchy path (root → leaf, name-joined). The
-		// path is identical on every peer because they load the same scene
-		// file; this is the same trick GameManager.AssignPlatformNetworkIds
-		// uses for its sort key.
-		private static string GetHierarchyPath(Transform t)
-		{
-			var sb = new System.Text.StringBuilder();
-			while (t != null)
-			{
-				if (sb.Length > 0) sb.Insert(0, "/");
-				sb.Insert(0, t.name);
-				t = t.parent;
-			}
-			return sb.ToString();
 		}
 
 		public void AddPoint(GameObject point) {
@@ -173,56 +119,41 @@ namespace Game{
 			return (Time.time - initial_lerp_time)/segment_period;
 		}
 
-		private bool TryComputePositionForCycle(float cycle_percentage, out Vector2 pos)
-		{
-			pos = default;
-			if (points.Count < 2) return false;
-			int source_point_idx = Mathf.FloorToInt(cycle_percentage * (points.Count - 1) * 2);
-			source_point_idx = source_point_idx < points.Count ? source_point_idx : 2 * (points.Count - 1) - source_point_idx;
-			int target_point_idx = Mathf.CeilToInt(cycle_percentage * (points.Count - 1) * 2);
-			target_point_idx = target_point_idx < points.Count ? target_point_idx : 2 * (points.Count - 1) - target_point_idx;
-			int num_of_paths = (points.Count - 1) * 2;
-			float path_percentage = cycle_percentage * num_of_paths % 1;
-			pos = Vector2.Lerp(points[source_point_idx].position, points[target_point_idx].position, path_percentage);
-			current_point_idx = source_point_idx;
-			this.target_point_idx = target_point_idx;
-			return true;
-		}
-
 		// This is used only from editor to mock movement of platform
 		public void SetPosition(float cycle_percentage) {
-			if (TryComputePositionForCycle(cycle_percentage, out Vector2 pos))
-				transform.position = pos;
-		}
+			if (points.Count < 2) {
+				return;
+			}
+			int source_point_idx, target_point_idx;
+			source_point_idx = Mathf.FloorToInt(cycle_percentage*(points.Count-1)*2);
+			source_point_idx = source_point_idx < points.Count ? source_point_idx : 2*(points.Count-1) - source_point_idx; 
+			target_point_idx = Mathf.CeilToInt(cycle_percentage*(points.Count-1)*2);
+			target_point_idx = target_point_idx < points.Count ? target_point_idx : 2*(points.Count-1) - target_point_idx;
+//			Debug.Log("PlatformManager idx: " + source_point_idx.ToString() + ", " + target_point_idx.ToString() );
+			int num_of_paths = (points.Count-1)*2;
+			float path_percentage = cycle_percentage*num_of_paths % 1;
+			Vector2 pos = Vector2.Lerp(points[source_point_idx].position, points[target_point_idx].position, path_percentage);
 
-		private void ApplyMultiplayerSyncedPosition()
-		{
-			int numPaths = (points.Count - 1) * 2;
-			if (numPaths <= 0 || segment_period <= 0f) return;
-			double cyclePeriod = segment_period * numPaths;
-			double elapsed = PhotonNetwork.Time - GameManager.PlatformMotionEpoch;
-			float cycle_percentage = (float)((elapsed % cyclePeriod) / cyclePeriod);
-			if (!TryComputePositionForCycle(cycle_percentage, out Vector2 pos)) return;
-			platform_state.Position = pos;
-			platform_view.Position = pos;
+//			if (platform_view == null) {
+//				AssignView();
+//			}
+//			platform_view.Position =pos;
+			transform.position = pos;
+
 		}
 
 		protected void FixedUpdate() {
-			if (points.Count == 0) return;
-			if (PhotonNetwork.InRoom && GameManager.PlatformMotionEpoch < 0) return;
-			if (PhotonNetwork.InRoom && GameManager.PlatformMotionEpoch >= 0)
-			{
-				ApplyMultiplayerSyncedPosition();
-				return;
-			}
-			float path_percentage = GetPathPercentage();
-			if (path_percentage <= 1.0f) {
-				Vector2 pos = Vector2.Lerp(points[current_point_idx].position, points[target_point_idx].position, path_percentage);
-				platform_state.Position = pos;
-				platform_view.Position = platform_state.Position;
-			}
-			else {
-				UpdateSourceTargetPoints();
+			if (points.Count != 0) {
+				float path_percentage = GetPathPercentage();
+				if (path_percentage <= 1.0f) {
+//					Debug.Log(current_point_idx + ") " + points[current_point_idx].position + " , " + target_point_idx + ") " + points[target_point_idx].position);
+					Vector2 pos = Vector2.Lerp(points[current_point_idx].position, points[target_point_idx].position, path_percentage);
+					platform_state.Position = pos;
+					platform_view.Position = platform_state.Position;
+				} 
+				else {
+					UpdateSourceTargetPoints();
+				}
 			}
 		}
 
@@ -240,28 +171,6 @@ namespace Game{
 			if(platform_state.num_lives <= 0) {
 				platform_state.num_lives = init_num_lives;
 				UpdateFramework(platform_framework);
-
-				// Slice 5 phase 2b: in a Photon room, broadcast the new color
-				// to other peers so their local view of this platform also
-				// flips. Without this each peer only sees the platforms
-				// they shot themselves; physics diverges.
-				if (PhotonNetwork.InRoom && game_manager != null)
-				{
-					game_manager.BroadcastPaintPlatform(networkId, platform_framework);
-				}
-			}
-		}
-
-		// Slice 5 phase 2b: applied by GameManager.RPCPaintPlatform on the
-		// receiving peer. Same effect as UpdateFramework but does NOT
-		// re-broadcast (avoids a paint feedback loop).
-		public void ApplyPaintFromNetwork(Framework framework)
-		{
-			SetFramework(framework);
-			if (game_manager != null && platform_view != null)
-			{
-				game_manager.ChangeLayer(platform_view.gameObject, framework);
-				platform_view.ReleaseCarriedWithMismatchedFramework(framework);
 			}
 		}
 
@@ -282,8 +191,9 @@ namespace Game{
 		private void UpdateFramework(Framework platform_framework) {
 			SetFramework(platform_framework);
 			game_manager.ChangeLayer(platform_view.gameObject, platform_framework);
-			platform_view.ReleaseCarriedWithMismatchedFramework(platform_framework);
 		}
+
+
 	}
 }
 

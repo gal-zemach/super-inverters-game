@@ -1,6 +1,5 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using Photon.Pun;
 using UnityEngine;
 
 
@@ -23,7 +22,6 @@ namespace Game{
 		}
 
 		protected void FixedUpdate() {
-			if (PhotonNetwork.InRoom && GameManager.PlatformMotionEpoch < 0) return;
 			if ((Time.time - initial_lerp_time) >= segment_period) {
 				UpdateSourceTargetPoints(); // updates initial_lerp_time to current time
 //				Debug.Log("Blinking FixedUpdate: " + points[current_point_idx].position);

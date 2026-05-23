@@ -1,7 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Photon.Pun;
 
 namespace Game{
 	public class PlatformLetterView : MonoBehaviour {
@@ -33,10 +32,10 @@ namespace Game{
 
 		public Vector2 Velocity{
 			get {
-				return body.linearVelocity;
+				return body.velocity;
 			}
 			set {
-				body.linearVelocity = value;
+				body.velocity = value;
 			}
 		}
 
@@ -163,10 +162,8 @@ namespace Game{
 			if (other.gameObject.tag == Values.SHOT_TAG)
 			{
 //				Debug.Log("PlatformManager: detected shot");
-				ShotState shot_state = other.gameObject.GetComponent<ShotState>();
-				// Phase 2d: ghost shots don't paint (paint arrives via RPC).
-				if (shot_state != null && shot_state.isGhost) return;
-				UpdateHit(shot_state.shot_framework);
+				Framework framework = other.gameObject.GetComponent<ShotState>().shot_framework;
+				UpdateHit(framework);
 			}
 			if (other.gameObject.tag == Values.PLAYER_TAG)
 			{
@@ -196,17 +193,9 @@ namespace Game{
 		}
 
 		public void Add(Rigidbody2D rb) {
-			if (!ShouldCarryRigidbody(rb)) return;
 			if (!carried_bodies.Contains(rb)) {
 				carried_bodies.Add(rb);
 			}
-		}
-
-		private static bool ShouldCarryRigidbody(Rigidbody2D rb)
-		{
-			if (!PhotonNetwork.InRoom) return true;
-			var pv = rb.GetComponentInChildren<PhotonView>();
-			return pv == null || pv.IsMine;
 		}
 
 		public void Remove(Rigidbody2D rb) {

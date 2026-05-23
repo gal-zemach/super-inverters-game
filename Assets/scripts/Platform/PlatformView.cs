@@ -1,6 +1,5 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using Photon.Pun;
 using UnityEngine;
 
 namespace Game{
@@ -35,10 +34,10 @@ namespace Game{
 
 		public Vector2 Velocity{
 			get {
-				return body.linearVelocity;
+				return body.velocity;
 			}
 			set {
-				body.linearVelocity = value;
+				body.velocity = value;
 			}
 		}
 
@@ -181,10 +180,8 @@ namespace Game{
 			if (other.gameObject.tag == Values.SHOT_TAG)
 			{
 //				Debug.Log("PlatformManager: detected shot");
-				ShotState shot_state = other.gameObject.GetComponent<ShotState>();
-				// Phase 2d: ghost shots don't paint (paint arrives via RPC).
-				if (shot_state != null && shot_state.isGhost) return;
-				UpdateHit(shot_state.shot_framework);
+				Framework framework = other.gameObject.GetComponent<ShotState>().shot_framework;
+				UpdateHit(framework);
 			}
 			if (other.gameObject.tag == Values.PLAYER_TAG)
 			{
@@ -214,29 +211,9 @@ namespace Game{
 		}
 
 		public void Add(Rigidbody2D rb) {
-			if (!ShouldCarryRigidbody(rb)) return;
 			if (!carried_bodies.Contains(rb)) {
 				carried_bodies.Add(rb);
 			}
-		}
-
-		// Drop riders whose color no longer matches the platform (e.g. black on white).
-		public void ReleaseCarriedWithMismatchedFramework(Framework platformFramework)
-		{
-			for (int i = carried_bodies.Count - 1; i >= 0; i--)
-			{
-				var ps = carried_bodies[i].GetComponent<PlayerState>()
-				         ?? carried_bodies[i].GetComponentInParent<PlayerState>();
-				if (ps != null && ps.player_framework != platformFramework)
-					carried_bodies.RemoveAt(i);
-			}
-		}
-
-		private static bool ShouldCarryRigidbody(Rigidbody2D rb)
-		{
-			if (!PhotonNetwork.InRoom) return true;
-			var pv = rb.GetComponentInChildren<PhotonView>();
-			return pv == null || pv.IsMine;
 		}
 
 		public void Remove(Rigidbody2D rb) {

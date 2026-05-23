@@ -39,8 +39,6 @@ namespace Game
 		{
 			return currentLives;
 		}
-
-		public float RowWorldWidth => Mathf.Max(1f, (maxLives - 1) * spaceBetweenLives);
 		
 		public void decreaseLife()
 		{

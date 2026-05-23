@@ -22,12 +22,11 @@ namespace Game {
 			
 		}
 		
-		public void Activate(Vector2 position, Vector2 startVelocity, float rotation, Framework shot_framework, bool isGhost = false)
+		public void Activate(Vector2 position, Vector2 startVelocity, float rotation, Framework shot_framework)
 		{
-			shot_state.isGhost = isGhost;
 			shot_state.Position = position;
 			shot_state.Rotation = rotation;
-
+			
 			Vector2 dir = Quaternion.Euler(0,0,rotation) * Vector2.right;
 			Vector2 velocity = startVelocity + dir * speed;
 			shot_state.Velocity = velocity;

@@ -23,7 +23,7 @@ namespace Game{
 			}
 		}
 
-		public Vector2 Position {
+		[SerializeField]  public Vector2 Position {
 			get {
 				return transform.position;
 			}
