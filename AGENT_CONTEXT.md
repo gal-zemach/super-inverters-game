@@ -149,6 +149,32 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-05-24 — Desync fix PLAYTESTED ✅ (PASS) + spawn-fall bug diagnosed (NOT fixed)
+**Agent session goal:** Playtest the master-authoritative game-over desync fix; then fix the MP spawn-fall bug.
+
+**Priority 1 — game-over desync fix: PLAYTESTED & PASSED.** 2-peer ParrelSync round (room `C4DA73`), verified from BOTH editors' logs (MCP was down — see below):
+- Both peers logged the SAME verdict `WhitePlayer Lost` via `RPCApplyKillResult` (GameManager.cs:418). Master ran the decider `RPCReportKillToMaster` 7×; guest ran it 0× and only applied the broadcast. Exactly one verdict each, identical → **desync is GONE. The fix works.**
+- **Log-based verification technique (reuse — works without MCP):** map editor→log with `lsof -p <pid> | grep Editor.log` (whichever Unity instance grabs `~/Library/Logs/Unity/Editor.log` first owns it; the other gets `Editor-prev.log`). Record `wc -c <log>` as a baseline, have user play a round, then `tail -c +<baseline+1> <log> | grep -E '^(Black|White)Player Lost$'` to read only the new round. This session: main editor → `Editor-prev.log`, clone `_clone_4` → `Editor.log`.
+
+**master / PR#2 decision (user): LEAVE master as-is.** `origin/master` (a7f912b6) and `origin/Multiplayer` (e0227e78) have BYTE-IDENTICAL trees (`git diff` empty) — master is just caught up to the healthy 6.3 state, not holding stale work. Reverting = pure churn. Convention going forward: keep work on Multiplayer.
+
+**MCP for Unity — STILL NOT CONNECTING (do not rabbit-hole; verify via logs instead).**
+- stdio server IS loaded & responds, but returned "No Unity Editor instances found" all session.
+- Root: the MAIN editor's `Library/MCPForUnity/RunState/` is EMPTY (no stdio bridge registration). The `_clone_4` editor is running an HTTP server on 127.0.0.1:8080 (`mcp_http_8080.pid` in its RunState) — HTTP is the WRONG transport for Claude (already flagged in the prior entry). Two editors open at once muddies discovery.
+- The in-editor "MCP for Unity" panel showed green in the main editor, yet RunState stayed empty and stdio never discovered it. **Untested fix for next time:** close the clone, keep ONLY the main editor, enable Auto-Connect / the stdio bridge in its panel, confirm a port/registration file appears in `Library/MCPForUnity/RunState/`, then retest. Config itself is correct (stdio entry in both `claude_desktop_config.json` and `~/.claude/mcp.json`).
+
+**Priority 2 — SPAWN-FALL BUG (NEW, diagnosed, NOT fixed).** Repro: start an MP round; during the READY countdown a player spawns and immediately falls out of bounds → status bar "WhitePlayer(Clone): Killed" before the round starts. Intermittent (depends on which random spawn is picked).
+- Current baked spawn coords in `level_1-multiplayer.unity` (MultiplayerSpawner on Bootstrap) — Black: (-30.7,32.13)/(-39.48,24.37)/(-28.29,16.96); White: (29.94,15.59)/(37.99,26.17)/(30.7,34.89). (User re-tuned since the 2026-05-22 values.)
+- **All 6 spawn gizmos show GREEN** ("lands here") in the Scene view → static geometry is fine. Logs show valid resolved `standPos` (e.g. anchor (-28.29,16.96)→stand (-28.29,10.74)), and the "no platform under spawn" warning never fired. So the player DOES resolve onto a platform, then falls THROUGH it (kill = `PlayerManager.OnTriggerExit2D`, i.e. left the alive-bounds).
+- Paint DOES switch the physics layer (`PlatformManager.ApplyPaintFromNetwork` → `game_manager.ChangeLayer`). `EnsureSpawnPlatformMatchesPlayer` (GameManager.cs:528) finds the SAME closest platform (both it and `SpawnPlatformPreview` raycast down 12f, take closest) and repaints it to the player's color. So in principle the landing platform should be standable — but empirically the player still falls.
+- **PRIME SUSPECT — grey-platform randomization overwriting the spawn paint.** Grey platforms pick BLACK/WHITE at init via a path-hash (`PlatformManager.cs` lines 70-95, `UpdateFramework(init_platform_framework)`). If a spawn's platform is grey and its init runs AFTER the spawner repaints it, it resets to the hash color — possibly the OPPONENT's — and the player falls through. Fits "green in editor, falls at runtime" + intermittency. CAVEAT to check: the spawner spawns from a coroutine that waits for `PhotonNetwork.InRoom`, so the paint may actually land several frames after `PlatformManager.Start` — needs runtime confirmation. (Script order: spawner -50, GameManager +100, PlatformManager default 0.)
+- Secondary suspect: the countdown freeze ("CountdownActive locks late `PhotonNetwork.Instantiate`'d players") not catching the network-spawned player before it falls. NOTE: kills ARE logged during READY even though `RPCReportKillToMaster` has `if (CountdownActive) return;` — so the fall happens and the player is lost for the round (no respawn while countdown active).
+- **To confirm root cause next session:** add a one-line `Debug.Log` in `EnsureSpawnPlatformMatchesPlayer` printing the platform name + its `platform_framework` BEFORE and AFTER paint + the player's standPos; OR get MCP working and query the platform color under each spawn anchor live. Then pick the fix: re-assert the spawn paint after grey init (paint on the next frame / after the player grounds), make spawn platforms grey, or guarantee the freeze catches the spawned player.
+
+**State left behind:** On `Multiplayer` @ e0227e78. **No code changes this session — diagnosis only.** Two Unity editors open (main + ParrelSync `_clone_4`). Deliberately-left pre-existing working-tree files (level_1-multiplayer.unity scene diff, {Black,White}Player.prefab, SceneTemplateSettings.json) untouched.
+
+**Next agent should:** (1) confirm the spawn-fall root cause (diagnostic log or MCP — grey-overwrite hypothesis above) then FIX it; (2) WebGL build retest on 6.3 (priority 3, untouched this session); (3) optionally fix MCP via close-clone + enable-stdio-bridge-in-main. Doc is >300 lines — consider compressing pre-2026-05-23 entries per working agreement #9.
+
 ### 2026-05-23 (session 2) — MP game-over desync FIXED (master-authoritative) + Unity MCP installed
 **Agent session goal:** Fix the top bug (MP game-over score desync) and set up Unity MCP for Claude.
 
