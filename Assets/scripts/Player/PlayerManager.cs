@@ -195,7 +195,7 @@ namespace Game{
 
 			// Only end jump pose when grounded and not still rising (overlap can stay
 			// true for a few frames after takeoff).
-			if (isGrounded && _rigidbody2D.velocity.y <= 0f)
+			if (isGrounded && _rigidbody2D.linearVelocity.y <= 0f)
 			{
 				_playerView.isJumping = false;
 				_playerView.isDoubleJumping = false;
@@ -235,13 +235,13 @@ namespace Game{
 						isShootingThisFrame = true;
 				}
 
-				if (_rigidbody2D.velocity.y < 0) _rigidbody2D.gravityScale = FallingGravityScale;
+				if (_rigidbody2D.linearVelocity.y < 0) _rigidbody2D.gravityScale = FallingGravityScale;
 				else _rigidbody2D.gravityScale = RegularGravityScale;
 
-				if (!isGrounded && _rigidbody2D.velocity.y < -MaxFallingVelocity)
-					_rigidbody2D.velocity = new Vector2(_rigidbody2D.velocity.x, -MaxFallingVelocity);
+				if (!isGrounded && _rigidbody2D.linearVelocity.y < -MaxFallingVelocity)
+					_rigidbody2D.linearVelocity = new Vector2(_rigidbody2D.linearVelocity.x, -MaxFallingVelocity);
 
-				currentVelocity = _rigidbody2D.velocity;
+				currentVelocity = _rigidbody2D.linearVelocity;
 			}
 
 			if (!fireHeldThisFrame)
@@ -395,11 +395,11 @@ namespace Game{
 
 		private void move(Vector2 direction)
 		{
-			Vector2 newVelocity = _rigidbody2D.velocity;
+			Vector2 newVelocity = _rigidbody2D.linearVelocity;
 			//		newVelocity.x = direction.x * VelocityFactor;
-			newVelocity.x = Mathf.Lerp(_rigidbody2D.velocity.x, direction.x * VelocityFactor, -Mathf.Pow(Time.deltaTime, 2) + 1);
+			newVelocity.x = Mathf.Lerp(_rigidbody2D.linearVelocity.x, direction.x * VelocityFactor, -Mathf.Pow(Time.deltaTime, 2) + 1);
 			newVelocity.x = Mathf.Clamp(newVelocity.x, -maxXVelocity, maxXVelocity);
-			_rigidbody2D.velocity = newVelocity;
+			_rigidbody2D.linearVelocity = newVelocity;
 		}
 
 		private void updateGrounded()
@@ -413,15 +413,15 @@ namespace Game{
 			if (isGrounded)
 			{
 				// This is to avoid chain jumping
-				if (_rigidbody2D.velocity.y > Jump_Y_Threshold)
+				if (_rigidbody2D.linearVelocity.y > Jump_Y_Threshold)
 				{
-					if (debugModeOn()) eventLog.AddEvent("PlayerManager: Didn't jump. y speed: " + _rigidbody2D.velocity.y);
+					if (debugModeOn()) eventLog.AddEvent("PlayerManager: Didn't jump. y speed: " + _rigidbody2D.linearVelocity.y);
 					return;
 				}
 				
 				DisconnectFromPlatfrom();
 				
-				_rigidbody2D.velocity += new Vector2(0, jumpHeight);
+				_rigidbody2D.linearVelocity += new Vector2(0, jumpHeight);
 				if (EnableSFX) _sfx.PlayJump();
 				if (debugModeOn()) eventLog.AddEvent("PlayerManager: Jumped.");
 				_playerView.isJumping = true;
@@ -432,13 +432,13 @@ namespace Game{
 			else if (canDoubleJump)
 			{
 				// This is to avoid chain jumping
-				if (_rigidbody2D.velocity.y > minimalDoubleJumpVelocity)
+				if (_rigidbody2D.linearVelocity.y > minimalDoubleJumpVelocity)
 				{
-					if (debugModeOn()) eventLog.AddEvent("PlayerManager: Didn't doubleJump. y speed: " + _rigidbody2D.velocity.y);
+					if (debugModeOn()) eventLog.AddEvent("PlayerManager: Didn't doubleJump. y speed: " + _rigidbody2D.linearVelocity.y);
 					return;
 				}
 									
-				_rigidbody2D.velocity = new Vector2(_rigidbody2D.velocity.x, jumpHeight);
+				_rigidbody2D.linearVelocity = new Vector2(_rigidbody2D.linearVelocity.x, jumpHeight);
 				if (EnableSFX) _sfx.PlayDoubleJump();
 				if (debugModeOn()) eventLog.AddEvent("PlayerManager: DoubleJumped");
 				_playerView.isDoubleJumping = true;
@@ -489,7 +489,7 @@ namespace Game{
 			Vector2 pos = _rigidbody2D.position;
 			if (EnableSFX) _sfx.PlayShoot();
 			float shooting_angle = direction.GetAngle();
-			_gameManager.SpawnShot(pos, _rigidbody2D.velocity, shooting_angle, _playerState.player_framework);
+			_gameManager.SpawnShot(pos, _rigidbody2D.linearVelocity, shooting_angle, _playerState.player_framework);
 
 //			float shell_rotation = (-direction + Vector2.up*1.5f).GetAngle();
 			float shell_rotation_angle = (shooting_angle >= 90 || shooting_angle < -90) ? -90.0f : 90.0f;
@@ -500,7 +500,7 @@ namespace Game{
 			// adding some randomness to the angle
 			shell_rotation = Random.Range(shell_rotation - shellAngleRange, shell_rotation + shellAngleRange);
 
-			_gameManager.SpawnShell(pos, _rigidbody2D.velocity, shell_rotation, _playerState.player_framework, GetComponent<Collider2D>());
+			_gameManager.SpawnShell(pos, _rigidbody2D.linearVelocity, shell_rotation, _playerState.player_framework, GetComponent<Collider2D>());
 			
 			// recoil
 			if (!isGrounded)
@@ -517,9 +517,9 @@ namespace Game{
 
 		private void slowHorizontalVelocity(float factor)
 		{
-			Vector2 vel = _rigidbody2D.velocity;
+			Vector2 vel = _rigidbody2D.linearVelocity;
 			vel.x /= factor;
-			_rigidbody2D.velocity = vel;
+			_rigidbody2D.linearVelocity = vel;
 		}
 
 		private void OnCollisionEnter2D(Collision2D other)

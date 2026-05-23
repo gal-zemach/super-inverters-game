@@ -55,6 +55,13 @@ namespace Game{
 			scoreKeeper.decreaseScore(playerName);
 		}
 
+		// Force the lives count to an authoritative value (used by the
+		// master-authoritative multiplayer kill path to keep every peer in sync).
+		public void setScore(string playerName, int lives)
+		{
+			scoreKeeper.setScore(playerName, lives);
+		}
+
 		public int getScore(string playerName)
 		{
 			return scoreKeeper.getScore(playerName);

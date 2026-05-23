@@ -74,3 +74,12 @@ GoogleAarExplodeCache.xml
 # into the PUN Setup Wizard locally.
 Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset
 Assets/Photon/PhotonUnityNetworking/Resources/PhotonServerSettings.asset.meta
+
+# Unity crash-recovery backups (created on editor force-quit/crash)
+Assets/_Recovery/
+Assets/_Recovery.meta
+
+# Google External Dependency Manager (EDM4U) — auto-generated, regenerates on
+# demand; not needed for the WebGL build target.
+Assets/MobileDependencyResolver/
+Assets/MobileDependencyResolver.meta
