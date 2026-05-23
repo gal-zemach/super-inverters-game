@@ -149,6 +149,25 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-05-23 (session 2) — MP game-over desync FIXED (master-authoritative) + Unity MCP installed
+**Agent session goal:** Fix the top bug (MP game-over score desync) and set up Unity MCP for Claude.
+
+**Game-over desync — FIXED (code-only, compiles clean; NOT yet playtested).**
+- `Assets/scripts/Game/GameManager.cs`: removed the old `PlayerKilled → RPCPlayerKilled (AllViaServer) → DoPlayerKilled` path where every peer decremented its own ScoreKeeper and decided game-over independently (the drift that made one peer log "BlackPlayer Lost" and the other "WhitePlayer Lost"). New flow: dying peer → `RPCReportKillToMaster` (RpcTarget.MasterClient) → master decrements the authoritative score, decides round-respawn vs game-over behind a new `_matchOver` latch (blocks a 2nd near-simultaneous final kill from naming a 2nd winner) → `RPCApplyKillResult` (RpcTarget.All) broadcasts authoritative lives + the single winnerId. Every peer force-sets its score via new `GameState.setScore` + `_gameView.updateScore()`, so HUD and end-game are identical everywhere. `WinnerIdFor` helper shared by SP/MP; `DoPlayerKilled` is now SP-only; `_matchOver` reset in `Awake`.
+- `Assets/scripts/Game/GameState.cs`: added `setScore(name, lives)` passthrough to ScoreKeeper.
+- **Verified:** Unity 6.3 Editor.log has ZERO `error CS` — compiles. **TODO next session: 2-peer ParrelSync playtest** — play one round to game-over, confirm BOTH editors show the end screen for the SAME winner.
+- Committed on `Unity-upgrade` (NOT pushed — user pushes).
+
+**Unity MCP (CoplayDev "MCP for Unity" v9.7.0) — installed, ONE step left.**
+- `com.coplaydev.unity-mcp` git dep added to `Packages/manifest.json` (+ `packages-lock.json` lock) — committed. Imported in Editor; first-run wizard green (Python 3.14 / uv 0.11); clicked **Configure All Detected Clients**.
+- Claude uses **STDIO** transport (NOT HTTP). Configure wrote the stdio entry to the Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`) and `~/.claude/mcp.json`. The Unity panel's "HTTP Local :8080" server is only for HTTP clients (Cursor/VSCode).
+- **GOTCHA (cost most of this session):** a manual HTTP `.mcp.json` (`localhost:8080/mcp`) is the WRONG transport for Claude — it connects to the Unity-launched HTTP server, which never exposes the Editor as an "instance" → "No Unity Editor instances found". Project `.mcp.json` is intentionally emptied (`{"mcpServers":{}}`); the real config is the global stdio one. **Don't recreate an HTTP `.mcp.json`.**
+- **PENDING:** MCP is not live yet — the Claude Desktop app must be **fully quit (Cmd+Q) and relaunched** (a new chat is NOT enough; MCP loads only at app startup). After relaunch with Unity open, `uvx mcp-for-unity --transport stdio` attaches to the Editor and tools like `read_console` / `manage_scene` work.
+
+**Left UNcommitted on purpose (not edited this session):** `Assets/Resources/{Black,White}Player.prefab` + `Assets/Scenes/level_1-multiplayer.unity` (big ~1177-line scene diff — pre-existing, likely the user's in-progress spawn-point work or a 6.3 reimport), `ProjectSettings/SceneTemplateSettings.json` (on the deliberately-left list), and untracked `.mcp.json` (empty placeholder). User to decide on these in GitHub Desktop.
+
+**Next agent should:** (1) 2-peer ParrelSync playtest of the desync fix; (2) finish the MP spawn-point add (select `Bootstrap` in `level_1-multiplayer` → `MultiplayerSpawner`, Scene-view drag handles, green ring = lands on platform); (3) WebGL build retest on 6.3 (old 2020.3 `abort(163)`/`nullFunc_vi` may behave differently).
+
 ### 2026-05-23 — Unity 6 migration: compiles & runs on 6000.4.4f1, but host hard-freezes on MP exit (engine deadlock) → switching to 6.3 LTS
 **Agent session goal:** Open project in Unity 6 LTS, migrate, fix compile errors, re-run MP checklist.
 
@@ -180,6 +199,19 @@ When you (a future agent) work on this repo:
 **NEW BUG found on 6.3:** MP **game-over desync (= score desync)** — guest showed the game-over screen, host did NOT and kept playing. **Confirmed from logs:** one peer logged `BlackPlayer Lost`, the other `WhitePlayer Lost` — the two editors **disagree on who ran out of lives**. Root: lives live in a **per-peer local `ScoreKeeper`** (`GameState.cs` Start/initializeScores/decreaseScore) and **each peer independently decides game-over** in `GameManager.DoPlayerKilled` (line 380; check `hasNoLives && _endGameMenu!=null` → `endGame`). The counts DRIFT, so peers reach game-over at different times / for different players.
   - Likely divergence sources to check: (a) `if (CountdownActive) return;` (GameManager:382) dropping a kill on only one peer (per-peer countdown timing); (b) a non-networked/local `DoPlayerKilled` path double-counting; (c) victim-name derivation / "(Clone)" normalization mismatch so `decreaseScore` hits a different key on each peer. Kill path today: `PlayerManager.OnTriggerExit2D` (IsMine-gated) → `PlayerKilled` → `RPC RPCPlayerKilled AllViaServer` → `DoPlayerKilled` on both.
   - **Robust fix direction:** make game-over **authoritative** — master decides `hasNoLives`/win and RPCs the end-game to ALL (so both peers end together for the same winner), instead of each peer deciding from its own drifting score. Optionally also sync ScoreKeeper from the master. NOT yet implemented. Likely a pre-existing MP weakness, not migration-specific.
+
+**END OF SESSION (2026-05-23) — committed & handed off:**
+- **Migration COMMITTED** on `Unity-upgrade`: `96c5da9b` "Migrate project to Unity 6.3 LTS (6000.3.16f1)" = the 2 `[SerializeField]` property fixes + API-Updater `velocity→linearVelocity` across game+Photon scripts + ProjectVersion/manifest/packages-lock bumps + new ProjectSettings (MemorySettings, MultiplayerManager). **NOT pushed yet** — user pushes via GitHub Desktop (Claude can't reach Keychain).
+- **Cleanup:** deleted untracked junk `Assets/_Recovery/` (editor crash backups from force-quits) + `Assets/MobileDependencyResolver/` (Google EDM4U, regenerates, unused on WebGL). Added both + `_Recovery` to `.gitignore` — that `.gitignore` edit is a separate small commit the user is making in GitHub Desktop (so they'll push ~2 commits ahead). `PhotonServerSettings.asset` stays gitignored (App ID credential).
+- **Project healthy on 6000.3.16f1:** compiles, runs, ParrelSync 2-peer MP works, back-to-main-menu freeze GONE.
+- **In-progress Q (unfinished):** user wants to add a multiplayer **spawn point** → select `Bootstrap` in `level_1-multiplayer`, add an X/Y to `MultiplayerSpawner.blackSpawnPositions`/`whiteSpawnPositions` (`Vector2[]`) via the Inspector array or the Scene-view drag handles (green ring = lands on platform). The spawner random-picks among them; there is no single "default".
+
+**Open work next session (priority):**
+0. **Compress THIS doc first (working agreement #9)** — do it at the start with full context budget. Fold the individual 2026-05-22 per-session entries (Shoot burst HUD; main-menu layout; lobby auto-assign; lobby UX; countdown sync; side-aim ×2; mouse-aim — all committed & superseded) into the consolidated 2026-05-22 summary; the doc is read in full every session so length costs tokens. **KEEP verbatim:** the STOP section, the pre-upgrade test checklist, the spawn coords + "Tuning MP spawn positions" instructions, the architecture seams, the WebGL dead-end section, and this 2026-05-23 migration entry.
+1. **MP game-over score desync** — make game-over master-authoritative (see fix direction above). Highest-value gameplay bug.
+2. Finish the spawn-point add the user was asking about.
+3. **Unity MCP setup** (CoplayDev "MCP for Unity") if still wanted — Package Manager git URL `https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main`; configure Claude Code client; **RESTART Claude Code** after (MCP loads at startup).
+4. **WebGL build retest on 6.3** — the 2020.3.48 `abort(163)`/`nullFunc_vi` blocker (see WebGL section below) may behave differently on Unity 6.3; verify before assuming it persists.
 
 ### 2026-05-22 — Pre-upgrade baseline (Unity 2020.3.48f1) → Unity 6 LTS migration branch
 **Agent session goal:** Lock a known-good **2020.3.48f1** baseline before Unity upgrade; hand off migration to a **Unity MCP-capable agent** (user switched agents — baseline agent could not drive the Editor).
