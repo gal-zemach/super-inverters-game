@@ -24,6 +24,7 @@
 - **No Photon files in the project yet.** Verified 2026-04-30. The prior agent walked the user through Photon signup + dashboard but never started the Unity install. That's where the user got stuck.
 - **Goal of this branch:** add **simple multiplayer** to a 2-player local game. See "Multiplayer goal" below.
 - **No CLAUDE.md exists.** This file is the source of truth for project-wide guidance until one is written.
+- **Unity upgrade in progress:** baseline on `Multiplayer` @ `5a3323ef` (2020.3.48f1); active attempt on branch **`Unity-upgrade`** → Unity 6 LTS. **Migration agent:** user switched to a Cursor agent with **Unity Editor MCP** (baseline workspace had no Unity MCP). The "Do not upgrade" bullet below remains the rule for **`Multiplayer` itself** — upgrade work stays on `Unity-upgrade` until merged.
 
 ---
 
@@ -147,6 +148,37 @@ When you (a future agent) work on this repo:
 ## Update log
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
+
+### 2026-05-22 — Pre-upgrade baseline (Unity 2020.3.48f1) → Unity 6 LTS migration branch
+**Agent session goal:** Lock a known-good **2020.3.48f1** baseline before Unity upgrade; hand off migration to a **Unity MCP-capable agent** (user switched agents — baseline agent could not drive the Editor).
+
+**Agent handoff:** User switching to another Cursor agent with **Unity Editor MCP** configured. That agent owns: **`Unity-upgrade`** branch, Unity 6 LTS project open, package/scene upgrades, compile fixes, and play-mode verification via MCP. Baseline agent committed + pushed on `Multiplayer` only.
+
+**Pre-upgrade engine:** Unity **2020.3.48f1** (`ProjectSettings/ProjectVersion.txt`).
+
+**Target upgrade:** Unity **6 LTS (6000.x)** — for Unity MCP / editor control during migration (not 2022.3).
+
+**Baseline commit:** `5a3323ef` on `Multiplayer` — last known-good state before upgrade branch (`origin/Multiplayer`).
+
+**Migration branch:** **`Unity-upgrade`** @ `5a3323ef`, pushed to `origin/Unity-upgrade` — branched from baseline; **do not upgrade on `Multiplayer` directly**.
+
+**Pre-upgrade test checklist (re-run on Unity 6 after migration; optional on 2020.3.48 before upgrade):**
+- Editor opens `main_menu` without console errors
+- **Multiplayer** button → lobby → create room / join / share link
+- **Single Player** intentionally disabled (gray, non-clickable) — `Assets/scripts/MainMenuUI.cs`
+- `level_menu` → level buttons load `level_1`..`level_4` by name
+- `level_1-multiplayer` → ParrelSync two-peer: spawn, synced countdown, one full round (death/reload optional)
+- WebGL build: **expect failure on 2020.3.48** (`abort(163)` / `nullFunc_vi` — see WebGL section below); retest after upgrade
+
+**Baseline commit included:** menu/lobby UI gray polish, `MainMenuUI`, level menu scene-by-name loading, MP spawn/session/lobby fixes (`MultiplayerSpawner`, `MultiplayerBootstrap`, `MultiplayerLobbyUI`, `GameManager`, etc.).
+
+**State left behind:** `Multiplayer` and `Unity-upgrade` both at `5a3323ef`, pushed; user on `Unity-upgrade`; Unity 6 migration not started (`ProjectVersion.txt` still 2020.3.48f1).
+
+**Next agent should (Unity MCP agent):**
+1. Confirm Unity MCP connected (`unity_status` / compilation tools).
+2. Stay on **`Unity-upgrade`**; open project in Unity 6 LTS; accept upgrade prompts; fix compile errors incrementally.
+3. Re-run pre-upgrade test checklist on Unity 6; append pass/fail deltas in a follow-up AGENT_CONTEXT entry.
+4. Commit migration changes to **`Unity-upgrade`** only; do not merge to `Multiplayer` until verified.
 
 ### 2026-05-22 — Shoot burst HUD, tuning, and quieter SFX (committed)
 **Agent session goal:** Per-player shoot cooldown HUD under lives; tune burst length and SFX; color-match bar to player.
