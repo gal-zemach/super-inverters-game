@@ -13,7 +13,7 @@
 
 - **Repo path:** `/Users/nadav/Documents/GitHub/super-inverters-game/`
 - **The Claude default cwd `/Users/nadav/Documents/Claude/Super Inverters Reloaded/` is EMPTY.** The actual code is in the path above. `cd` there before doing anything.
-- **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`). **Dirty working tree** as of 2026-05-22 — mouse-aim + 3-dir animation work + side-aim debug (user chose **not to commit** until side pose is fixed).
+- **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`). Shoot burst HUD + SFX tuning committed 2026-05-22.
 - **Engine:** Unity **2020.3.48f1** (LTS). Originally a Unity 2017 project. **Do not "upgrade" the project further** — 2020 is the version that builds and runs. 2017 was tried and failed. Unity Hub shows a red icon next to this version (likely just a "no longer supported by Unity" warning, not a project error — confirm before reacting to it).
 - **Project is registered in Unity Hub** under the name `super-inverters-game`. The user opens the project from there. Don't `Add project` again.
 - **Latest published web build:** https://nmeidan.itch.io/superinverters — the live WebGL build, "the latest web version."
@@ -39,7 +39,7 @@ super-inverters-game/
 │   ├── Prefabs/            Player.prefab, Game.prefab, Shot/Shell, platforms, menus
 │   ├── scripts/
 │   │   ├── Game/           GameManager, GameState, GameView, LivesVisualizer
-│   │   ├── Player/         PlayerManager, PlayerState, PlayerView, PlayerSFX, etc.
+│   │   ├── Player/         PlayerManager, PlayerState, PlayerView, PlayerSFX, ShootCooldownHud, etc.
 │   │   ├── Controllers/    Controller (base), KeyboardController, PS4Controller, LevelMenuController
 │   │   ├── Shell/, Shot/, Platform/, Movement/, Utils/, Editor/
 │   │   └── (top-level)     SceneLoader, ScoreKeeper, Values, etc.
@@ -148,11 +148,17 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
-### 2026-05-22 — Shoot cooldown, lower SFX, HUD indicator
+### 2026-05-22 — Shoot burst HUD, tuning, and quieter SFX (committed)
+**Agent session goal:** Per-player shoot cooldown HUD under lives; tune burst length and SFX; color-match bar to player.
 **What I did:**
-- `PlayerManager` — `turnsBetweenShots` (2 = very high fire rate), `burstFireDurationSeconds` (1.2s continuous fire per hold; release fire to reset burst).
-- `PlayerSFX.shootVolume` (default 0.35).
-- `ShootCooldownUI` on Black/White player prefabs — radial fill for inter-shot cooldown; move **ShootCooldownHUD/CooldownIndicator** RectTransform in prefab to reposition (or context menu **Rebuild Cooldown HUD** on component).
+- **`ShootCooldownHud`** (`Assets/scripts/Player/ShootCooldownHud.cs`) on **Game** (`Game.prefab` + baked `Game` in `level_1-multiplayer.unity`) — 8px burst-ammo bar under local player's lives row; **black** for Black, **white** for White; wired to `PlayerManager.BurstAmmo01`. Removed per-prefab `ShootCooldownUI`.
+- **`PlayerManager.BurstAmmo01`** — HUD tracks continuous-fire window, not inter-shot cooldown.
+- **Burst window** — `burstFireDurationSeconds` **0.5s** (prefabs + code); release fire to reset.
+- **`PlayerSFX`** — `shootVolume` **0.22**; new `impactVolume` **0.2** (shot-hit sound ~80% quieter).
+- **`LivesVisualizer.RowWorldWidth`** — bar width tracks lives row.
+- **`HideSceneUIInEditMode.cs.meta`** — fixed invalid 33-char GUID; restored script ref on scene `Game`.
+**State left behind:** pushed to `origin/Multiplayer`.
+**Next agent should:** playtest MP burst bar + SFX levels; tune `barHeight` / offsets on Game if needed.
 
 ### 2026-05-22 — Random MP spawn points (3 per color)
 **Agent session goal:** Opponent could camp the single predictable spawn platform and spawn-kill loop victims.

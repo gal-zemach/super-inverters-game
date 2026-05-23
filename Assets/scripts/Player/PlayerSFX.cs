@@ -6,7 +6,10 @@ public class PlayerSFX : MonoBehaviour
 	public AudioSource Jump, DoubleJump, Shoot, Impact, Death;
 
 	[SerializeField, Range(0f, 1f), Tooltip("Volume multiplier for the shoot sound.")]
-	private float shootVolume = 0.35f;
+	private float shootVolume = 0.22f;
+
+	[SerializeField, Range(0f, 1f), Tooltip("Volume multiplier for the shot-hit impact sound.")]
+	private float impactVolume = 0.2f;
 
 	public void PlayJump()
 	{
@@ -27,6 +30,8 @@ public class PlayerSFX : MonoBehaviour
 
 	public void PlayImpact()
 	{
+		if (Impact == null) return;
+		Impact.volume = impactVolume;
 		Impact.Play();
 	}
 

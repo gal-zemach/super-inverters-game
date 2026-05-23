@@ -305,7 +305,6 @@ GameObject:
   - component: {fileID: 6128243635514895138}
   - component: {fileID: 8847291056382719401}
   - component: {fileID: 4113455482322663690}
-  - component: {fileID: 5113455482322663691}
   m_Layer: 17
   m_Name: BlackPlayer
   m_TagString: player
@@ -401,7 +400,7 @@ MonoBehaviour:
   RegularGravityScale: 4
   FallingGravityScale: 2
   turnsBetweenShots: 2
-  burstFireDurationSeconds: 1.5
+  burstFireDurationSeconds: 0.5
   shellAngleRange: 10
   recoil: 0.1
   movingDirection: {x: 0, y: 0}
@@ -612,21 +611,6 @@ MonoBehaviour:
   inStartScene: 0
   movingDirection: {x: 0, y: 0}
   aimDirection: {x: 0, y: 0}
---- !u!114 &5113455482322663691
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1270938468579276}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f8e3c2b1a0944321b0c9d8e7f6a5b4c3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  indicatorRoot: {fileID: 0}
-  fillImage: {fileID: 0}
-  hideWhenReady: 1
 --- !u!1 &1291081427228662
 GameObject:
   m_ObjectHideFlags: 0
@@ -1140,7 +1124,8 @@ MonoBehaviour:
   Shoot: {fileID: 82591240436111270}
   Impact: {fileID: 82601598178368668}
   Death: {fileID: 82078379256793474}
-  shootVolume: 0.35
+  shootVolume: 0.22
+  impactVolume: 0.2
 --- !u!1 &1915056108470716
 GameObject:
   m_ObjectHideFlags: 0

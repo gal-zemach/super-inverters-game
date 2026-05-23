@@ -2004,6 +2004,7 @@ GameObject:
   - component: {fileID: 1088979588}
   - component: {fileID: 1088979593}
   - component: {fileID: 1088979594}
+  - component: {fileID: 1088979595}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -2145,7 +2146,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1088979586}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: c4d8e9f0a1b2436d9e8f7a6b5c4d3e2f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   hideObjectNames:
@@ -2153,6 +2154,22 @@ MonoBehaviour:
   - EndGameMenu
   - CountDownAnimation
   - PauseMenu
+--- !u!114 &1088979595
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1088979586}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2d4f6a8b0c1437d9e1f2a3b4c5d6e7f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  barHeight: 8
+  fallbackBarWidth: 110
+  belowLivesWorldOffset: {x: 0, y: -4.5, z: 0}
+  screenFineTuneOffset: {x: 0, y: 0}
 --- !u!1 &1128330409
 GameObject:
   m_ObjectHideFlags: 0

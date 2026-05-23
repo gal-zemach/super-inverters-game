@@ -51,7 +51,7 @@ namespace Game{
 		private int turnsBetweenShots = 2;
 
 		[SerializeField, Tooltip("Max seconds of continuous fire per hold before you must release.")]
-		private float burstFireDurationSeconds = 1.2f;
+		private float burstFireDurationSeconds = 0.5f;
 
 		private float InterShotCooldownSeconds => turnsBetweenShots * Time.fixedDeltaTime;
 
@@ -86,6 +86,18 @@ namespace Game{
 				float cd = InterShotCooldownSeconds;
 				if (cd <= 0f) return 0f;
 				return Mathf.Clamp01((_nextShootTime - Time.time) / cd);
+			}
+		}
+
+		/// <summary>1 = full burst available, 0 = burst exhausted until fire is released.</summary>
+		public float BurstAmmo01
+		{
+			get
+			{
+				if (burstFireDurationSeconds <= 0f) return 1f;
+				if (!_burstActive) return 1f;
+				float elapsed = Time.time - _burstStartTime;
+				return Mathf.Clamp01(1f - elapsed / burstFireDurationSeconds);
 			}
 		}
 
