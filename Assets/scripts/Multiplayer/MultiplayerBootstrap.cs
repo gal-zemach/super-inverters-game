@@ -29,6 +29,16 @@ namespace Multiplayer
         private string pendingRoomToJoin;
         private string joinSource;
         private bool pendingCreateRoom;
+        private bool resumeJoinAfterLeave;
+        private bool resumeCreateAfterLeave;
+        private int joinRetryCount;
+        private Coroutine joinRetryCoroutine;
+
+        /// <summary>Room name we closed as host before LeaveRoom; cleared after OnLeftRoom confirms.</summary>
+        private string _hostedRoomPendingCloseConfirm;
+
+        /// <summary>Last join/create error for lobby UI (cleared on success).</summary>
+        public string LastLobbyError { get; private set; }
 
         public bool IsConnectedToMaster => PhotonNetwork.IsConnected;
         public bool IsInRoom => PhotonNetwork.InRoom;
@@ -86,6 +96,58 @@ namespace Multiplayer
             TryJoinRoom();
         }
 
+        /// <summary>Leave the current Photon room and return to the create/join lobby UI.</summary>
+        public void LeaveCurrentRoom()
+        {
+            pendingCreateRoom = false;
+            pendingRoomToJoin = null;
+            joinSource = null;
+            joinRetryCount = 0;
+            LastLobbyError = null;
+            if (joinRetryCoroutine != null)
+            {
+                StopCoroutine(joinRetryCoroutine);
+                joinRetryCoroutine = null;
+            }
+
+            if (PhotonNetwork.InRoom)
+            {
+                CloseHostedRoomIfMaster();
+                PhotonNetwork.LeaveRoom();
+            }
+        }
+
+        /// <summary>Disconnect from Photon and load the main menu scene.</summary>
+        public void ReturnToMainMenu()
+        {
+            if (PhotonNetwork.InRoom)
+            {
+                CloseHostedRoomIfMaster();
+                PhotonNetwork.LeaveRoom();
+            }
+
+            if (PhotonNetwork.IsConnected)
+                PhotonNetwork.Disconnect();
+
+            SceneManager.LoadScene("main_menu");
+        }
+
+        /// <summary>Master closes the room so no one can join, then leave removes it (EmptyRoomTtl=0).</summary>
+        private void CloseHostedRoomIfMaster()
+        {
+            if (!PhotonNetwork.InRoom || !PhotonNetwork.IsMasterClient) return;
+
+            var room = PhotonNetwork.CurrentRoom;
+            if (room == null) return;
+
+            _hostedRoomPendingCloseConfirm = room.Name;
+            room.IsOpen = false;
+            room.IsVisible = false;
+            Debug.Log(
+                $"[Multiplayer] RoomClose: closing hosted room '{room.Name}' before leave " +
+                $"(IsOpen=false, IsVisible=false, EmptyRoomTtl=0 on create).");
+        }
+
         public static string BuildShareUrl(string roomName)
         {
             string url = Application.absoluteURL;
@@ -108,9 +170,19 @@ namespace Multiplayer
 
         public override void OnConnectedToMaster()
         {
-            Debug.Log($"[Multiplayer] Connected to master ({PhotonNetwork.CloudRegion}).");
+            Debug.Log($"[Multiplayer] Connected to master (region: {PhotonNetwork.CloudRegion}).");
+            LastLobbyError = null;
+            joinRetryCount = 0;
 
-            if (PhotonNetwork.InRoom) return;
+            if (PhotonNetwork.InRoom)
+            {
+                // Stale room from a prior session, or need to switch rooms — handled below.
+                if (!string.IsNullOrEmpty(pendingRoomToJoin))
+                    TryJoinRoom();
+                else if (pendingCreateRoom)
+                    TryCreateRoom();
+                return;
+            }
 
             if (!string.IsNullOrEmpty(pendingRoomToJoin))
             {
@@ -126,11 +198,20 @@ namespace Multiplayer
 
         public override void OnJoinedRoom()
         {
+            LastLobbyError = null;
+            joinRetryCount = 0;
+            if (joinRetryCoroutine != null)
+            {
+                StopCoroutine(joinRetryCoroutine);
+                joinRetryCoroutine = null;
+            }
+
             string room = PhotonNetwork.CurrentRoom.Name;
             int count = PhotonNetwork.CurrentRoom.PlayerCount;
             int max = PhotonNetwork.CurrentRoom.MaxPlayers;
             Debug.Log($"[Multiplayer] Joined room '{room}' ({count}/{max} players).");
 
+            MultiplayerColorAssignment.ClearLocalColorClaim();
             MultiplayerColorAssignment.ClaimForLocalPlayer();
 
             if (PhotonNetwork.IsMasterClient)
@@ -141,6 +222,43 @@ namespace Multiplayer
             TryLoadGameScene();
         }
 
+        public override void OnLeftRoom()
+        {
+            MultiplayerColorAssignment.ClearLocalColorClaim();
+
+            if (!string.IsNullOrEmpty(_hostedRoomPendingCloseConfirm))
+            {
+                string closedRoom = _hostedRoomPendingCloseConfirm;
+                _hostedRoomPendingCloseConfirm = null;
+                Debug.Log(
+                    $"[Multiplayer] RoomCloseConfirm: host backed out of '{closedRoom}'. " +
+                    $"Left Photon room successfully (InRoom={PhotonNetwork.InRoom}). " +
+                    $"Server should delete the room immediately (EmptyRoomTtl=0). " +
+                    $"A join attempt with code '{closedRoom}' should fail with GameDoesNotExist.");
+            }
+
+            if (!IsLobbyScene()) return;
+
+            if (resumeJoinAfterLeave)
+            {
+                resumeJoinAfterLeave = false;
+                TryJoinRoom();
+                return;
+            }
+
+            if (resumeCreateAfterLeave)
+            {
+                resumeCreateAfterLeave = false;
+                TryCreateRoom();
+            }
+        }
+
+        public override void OnRoomPropertiesUpdate(Hashtable propertiesThatChanged)
+        {
+            if (propertiesThatChanged != null && propertiesThatChanged.ContainsKey(MultiplayerSpawner.HostColorProperty))
+                MultiplayerColorAssignment.ClaimForLocalPlayer();
+        }
+
         public override void OnPlayerEnteredRoom(Player newPlayer)
         {
             Debug.Log($"[Multiplayer] Player joined: actor #{newPlayer.ActorNumber}. Room now {PhotonNetwork.CurrentRoom.PlayerCount}/{PhotonNetwork.CurrentRoom.MaxPlayers}.");
@@ -149,17 +267,56 @@ namespace Multiplayer
 
         private void TryJoinRoom()
         {
-            if (!PhotonNetwork.IsConnectedAndReady || string.IsNullOrEmpty(pendingRoomToJoin)) return;
-            if (PhotonNetwork.InRoom) return;
+            if (string.IsNullOrEmpty(pendingRoomToJoin)) return;
 
-            Debug.Log($"[Multiplayer] Joining room '{pendingRoomToJoin}' (from {joinSource}).");
-            PhotonNetwork.JoinRoom(pendingRoomToJoin);
+            if (!PhotonNetwork.IsConnectedAndReady)
+            {
+                Debug.Log("[Multiplayer] Join queued — waiting for Photon connection.");
+                return;
+            }
+
+            if (PhotonNetwork.InRoom)
+            {
+                string current = PhotonNetwork.CurrentRoom?.Name;
+                if (string.Equals(current, pendingRoomToJoin, StringComparison.OrdinalIgnoreCase))
+                    return;
+
+                Debug.Log($"[Multiplayer] In room '{current}' — leaving to join '{pendingRoomToJoin}'.");
+                resumeJoinAfterLeave = true;
+                CloseHostedRoomIfMaster();
+                PhotonNetwork.LeaveRoom();
+                return;
+            }
+
+            Debug.Log($"[Multiplayer] Joining room '{pendingRoomToJoin}' (from {joinSource}, region {PhotonNetwork.CloudRegion}).");
+            if (!PhotonNetwork.JoinRoom(pendingRoomToJoin))
+            {
+                LastLobbyError = "Could not send join request — not ready yet. Retrying…";
+                Debug.LogWarning("[Multiplayer] JoinRoom rejected by client (not ready). Will retry on connect.");
+            }
         }
 
         private void TryCreateRoom()
         {
-            if (!PhotonNetwork.IsConnectedAndReady || !pendingCreateRoom) return;
-            if (PhotonNetwork.InRoom) return;
+            if (!pendingCreateRoom) return;
+
+            if (!PhotonNetwork.IsConnectedAndReady)
+            {
+                Debug.Log("[Multiplayer] Create queued — waiting for Photon connection.");
+                return;
+            }
+
+            if (PhotonNetwork.InRoom)
+            {
+                if (PhotonNetwork.IsMasterClient)
+                    return;
+
+                Debug.Log("[Multiplayer] In someone else's room — leaving before hosting.");
+                resumeCreateAfterLeave = true;
+                CloseHostedRoomIfMaster();
+                PhotonNetwork.LeaveRoom();
+                return;
+            }
 
             Framework color = roomMasterColor;
             string roomName = GenerateRoomCode();
@@ -168,14 +325,20 @@ namespace Multiplayer
                 MaxPlayers = 2,
                 IsVisible = false,
                 IsOpen = true,
+                EmptyRoomTtl = 0,
+                PlayerTtl = 0,
                 CustomRoomProperties = new Hashtable
                 {
                     { MultiplayerSpawner.HostColorProperty, (int)color }
                 },
                 CustomRoomPropertiesForLobby = new[] { MultiplayerSpawner.HostColorProperty }
             };
-            Debug.Log($"[Multiplayer] Hosting room '{roomName}' as {color}.");
-            PhotonNetwork.CreateRoom(roomName, options);
+            Debug.Log($"[Multiplayer] Hosting room '{roomName}' as {color} (region {PhotonNetwork.CloudRegion}).");
+            if (!PhotonNetwork.CreateRoom(roomName, options))
+            {
+                LastLobbyError = "Could not send create request — not ready yet. Retrying…";
+                Debug.LogWarning("[Multiplayer] CreateRoom rejected by client (not ready). Will retry on connect.");
+            }
         }
 
         private void TryLoadGameScene()
@@ -192,17 +355,40 @@ namespace Multiplayer
 
         public override void OnJoinRoomFailed(short returnCode, string message)
         {
-            Debug.LogWarning($"[Multiplayer] Join failed (code {returnCode}): {message}.");
+            LastLobbyError = $"Join failed ({returnCode}): {message}";
+            Debug.LogWarning($"[Multiplayer] {LastLobbyError} (region {PhotonNetwork.CloudRegion})");
+
+            // 32758 = GameDoesNotExist — host may still be registering the room.
+            const short gameDoesNotExist = 32758;
+            if (returnCode == gameDoesNotExist && !string.IsNullOrEmpty(pendingRoomToJoin) && joinRetryCount < 8)
+            {
+                joinRetryCount++;
+                if (joinRetryCoroutine != null)
+                    StopCoroutine(joinRetryCoroutine);
+                joinRetryCoroutine = StartCoroutine(RetryJoinAfterDelay(1.5f));
+            }
         }
 
         public override void OnCreateRoomFailed(short returnCode, string message)
         {
-            Debug.LogError($"[Multiplayer] Create failed (code {returnCode}): {message}.");
+            LastLobbyError = $"Create failed ({returnCode}): {message}";
+            Debug.LogError($"[Multiplayer] {LastLobbyError} (region {PhotonNetwork.CloudRegion})");
+            pendingCreateRoom = false;
         }
 
         public override void OnDisconnected(DisconnectCause cause)
         {
-            Debug.LogWarning($"[Multiplayer] Disconnected: {cause}.");
+            LastLobbyError = $"Disconnected: {cause}";
+            Debug.LogWarning($"[Multiplayer] {LastLobbyError}");
+        }
+
+        private System.Collections.IEnumerator RetryJoinAfterDelay(float seconds)
+        {
+            yield return new WaitForSeconds(seconds);
+            joinRetryCoroutine = null;
+            if (!IsLobbyScene() || string.IsNullOrEmpty(pendingRoomToJoin)) yield break;
+            Debug.Log($"[Multiplayer] Retrying join '{pendingRoomToJoin}' (attempt {joinRetryCount}).");
+            TryJoinRoom();
         }
 
         private static bool IsLobbyScene()

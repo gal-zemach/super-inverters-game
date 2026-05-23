@@ -1,9 +1,0 @@
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H1","location":"MultiplayerBootstrap.OnJoinedRoom","message":"claimed color","data":{"room":"F9E48F","isMaster":true,"assigned":"BLACK"},"timestamp":1779529677706}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H1","location":"MultiplayerBootstrap.OnJoinedRoom","message":"claimed color","data":{"room":"F9E48F","isMaster":false,"assigned":"WHITE"},"timestamp":1779529694236}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"BLACK","hostColor":"BLACK","isMaster":true},"timestamp":1779529696184}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"WHITE","hostColor":"BLACK","isMaster":false},"timestamp":1779529696187}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"BLACK","hostColor":"BLACK","isMaster":true},"timestamp":1779529706156}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"WHITE","hostColor":"BLACK","isMaster":false},"timestamp":1779529714950}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"WHITE","hostColor":"BLACK","isMaster":false},"timestamp":1779529722448}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"WHITE","hostColor":"BLACK","isMaster":false},"timestamp":1779529725987}
-{"sessionId":"5efe84","runId":"pre-fix","hypothesisId":"H2","location":"MultiplayerSpawner.TrySpawn","message":"spawn color","data":{"myColor":"WHITE","hostColor":"BLACK","isMaster":false},"timestamp":1779529727867}

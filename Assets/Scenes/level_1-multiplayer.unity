@@ -3414,12 +3414,12 @@ MonoBehaviour:
   blackPrefabName: BlackPlayer
   whitePrefabName: WhitePlayer
   blackSpawnPositions:
-  - {x: -30.7, y: 31.038792}
-  - {x: -10.7, y: 34.45869}
-  - {x: -40.7, y: 42.87723}
+  - {x: -30.7, y: 32.129917}
+  - {x: -39.478428, y: 24.365784}
+  - {x: -28.288454, y: 16.963009}
   whiteSpawnPositions:
-  - {x: 38.12, y: 24.729897}
-  - {x: 20.12, y: 25.900768}
+  - {x: 29.936562, y: 15.591724}
+  - {x: 37.987175, y: 26.17355}
   - {x: 30.7, y: 34.89}
   targetSceneName: level_1-multiplayer
 --- !u!4 &1561950250

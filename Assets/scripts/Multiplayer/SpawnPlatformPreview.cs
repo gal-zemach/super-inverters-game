@@ -7,6 +7,15 @@ namespace Multiplayer
     public static class SpawnPlatformPreview
     {
         public const float RayDistance = 12f;
+        /// <summary>Feet sit slightly above the platform surface hit point (matches spawn editor gizmos).</summary>
+        public const float PlayerFootOffsetY = 0.3f;
+
+        public static Vector2 ResolvePlayerStandPosition(Vector2 spawnAnchor)
+        {
+            if (TryGetLandingPoint(spawnAnchor, out Vector2 landing, out _))
+                return landing + Vector2.up * PlayerFootOffsetY;
+            return spawnAnchor;
+        }
 
         public static bool TryGetLandingPoint(Vector2 spawnWorldPos, out Vector2 landingPoint, out PlatformManager platform)
         {

@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Multiplayer;
 using Photon.Pun;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,10 +12,10 @@ namespace Game {
 
 	public enum Framework {GREY, BLACK, WHITE}
 
-	// Inherits MonoBehaviourPun so we can call photonView.RPC for the
-	// networked PlayerKilled flow. Game.prefab needs a PhotonView component
+	// Inherits MonoBehaviourPunCallbacks so we can call photonView.RPC and receive
+	// OnLeftRoom for networked menu exit. Game.prefab needs a PhotonView component
 	// (added 2026-05-07).
-	public class GameManager : MonoBehaviourPun {
+	public class GameManager : MonoBehaviourPunCallbacks {
 
 		private GameView _gameView;
 		private GameState _gameState;
@@ -58,6 +59,8 @@ namespace Game {
 		// Mid-round reloads re-run Start() but must not replay Ready/Set/Fight.
 		// Cleared on rematch (Replay) and when not in a room (lobby / disconnect).
 		private static bool s_matchStartCountdownPlayed;
+		private static bool s_pendingExitToMainMenu;
+		private const string MainMenuSceneName = "main_menu";
 		
 		
 		void Awake ()
@@ -583,6 +586,62 @@ namespace Game {
 			PrepareScoresForRematch();
 			roundEnded = false;
 			ReloadMatchScene();
+		}
+
+		public void RequestNetworkedExitToMainMenu()
+		{
+			DismissEndGamePresentation();
+			RestoreGameplayTimeScale();
+
+			if (PhotonNetwork.InRoom && photonView != null)
+			{
+				photonView.RPC(nameof(RPCExitToMainMenu), RpcTarget.All);
+				return;
+			}
+
+			s_pendingExitToMainMenu = true;
+			LoadMainMenuScene();
+		}
+
+		[PunRPC]
+		private void RPCExitToMainMenu()
+		{
+			DismissEndGamePresentation();
+			RestoreGameplayTimeScale();
+			s_pendingExitToMainMenu = true;
+			s_matchStartCountdownPlayed = false;
+			roundEnded = false;
+
+			var spawner = Object.FindObjectOfType<MultiplayerSpawner>();
+			spawner?.ResetSessionSpawnState();
+			MultiplayerColorAssignment.ClearLocalColorClaim();
+
+			if (PhotonNetwork.InRoom)
+				PhotonNetwork.LeaveRoom();
+			else
+				LoadMainMenuScene();
+		}
+
+		public override void OnLeftRoom()
+		{
+			if (!s_pendingExitToMainMenu) return;
+			s_pendingExitToMainMenu = false;
+			LoadMainMenuScene();
+		}
+
+		private void RestoreGameplayTimeScale()
+		{
+			Time.timeScale = 1f;
+			if (_pause_menu != null && _pause_menu.activeSelf)
+				_pause_menu.SetActive(false);
+		}
+
+		private static void LoadMainMenuScene()
+		{
+			s_matchStartCountdownPlayed = false;
+			s_pendingExitToMainMenu = false;
+			CountdownActive = false;
+			SceneManager.LoadScene(MainMenuSceneName);
 		}
 
 		private void DismissEndGamePresentation()

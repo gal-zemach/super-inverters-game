@@ -5,7 +5,7 @@ using UnityEngine;
 [CustomEditor(typeof(MultiplayerSpawner))]
 public class MultiplayerSpawnerEditor : Editor
 {
-    private const float PlayerFootOffsetY = 0.3f;
+    private const float PlayerFootOffsetY = SpawnPlatformPreview.PlayerFootOffsetY;
 
     public override void OnInspectorGUI()
     {

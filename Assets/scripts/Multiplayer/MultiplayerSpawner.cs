@@ -94,13 +94,10 @@ namespace Multiplayer
 
         private void Start()
         {
-            // Post-LoadLevel case: we're now in the game scene, already in a
-            // room. OnJoinedRoom won't fire here, so kick off the spawn from
-            // Start instead.
-            if (PhotonNetwork.InRoom && IsInTargetScene())
-            {
-                RequestSpawn(forceRespawn: true);
-            }
+            if (!IsInTargetScene()) return;
+
+            ResetSessionSpawnState();
+            RequestSpawn(forceRespawn: true);
         }
 
         public override void OnJoinedRoom()
@@ -110,15 +107,26 @@ namespace Multiplayer
             // are present, and Start above will fire spawn there.
             if (IsInTargetScene())
             {
-                TrySpawn();
+                if (!spawned && FindLocalNetworkedPlayer() == null)
+                    RequestSpawn(forceRespawn: true);
             }
+        }
+
+        /// <summary>Clears per-match spawn cache and destroys leftover local avatars (e.g. after main-menu exit).</summary>
+        public void ResetSessionSpawnState()
+        {
+            _cachedLocalSpawnPosition = null;
+            spawned = false;
+            s_spawnInProgress = false;
+            DestroyStaleLocalNetworkedPlayers();
         }
 
         public override void OnRoomPropertiesUpdate(Hashtable propertiesThatChanged)
         {
             if (propertiesThatChanged != null && propertiesThatChanged.ContainsKey(HostColorProperty) && IsInTargetScene())
             {
-                TrySpawn();
+                if (!spawned && FindLocalNetworkedPlayer() == null)
+                    RequestSpawn(forceRespawn: false);
             }
         }
 
@@ -149,7 +157,7 @@ namespace Multiplayer
 
             if (SpawnPlatformPreview.TryGetLandingPoint(position, out Vector2 land, out _))
             {
-                Vector3 landing = new Vector3(land.x, land.y + 0.3f, 0f);
+                Vector3 landing = new Vector3(land.x, land.y + SpawnPlatformPreview.PlayerFootOffsetY, 0f);
                 Gizmos.color = Color.green;
                 Gizmos.DrawWireSphere(landing, 0.55f);
                 Gizmos.color = Color.yellow;
@@ -181,6 +189,23 @@ namespace Multiplayer
 
         private System.Collections.IEnumerator SpawnWhenReady(bool forceRespawn)
         {
+            // Scene Start can run before PUN finishes joining the room (common on
+            // the guest after LoadLevel). Wait like GameManager's countdown loop.
+            const float joinRoomTimeout = 15f;
+            float joinRoomElapsed = 0f;
+            while (!PhotonNetwork.InRoom && joinRoomElapsed < joinRoomTimeout)
+            {
+                joinRoomElapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            if (!PhotonNetwork.InRoom)
+            {
+                Debug.LogWarning("[Multiplayer] Spawn aborted: not in a Photon room after wait.");
+                _spawnCoroutine = null;
+                yield break;
+            }
+
             DestroyStaleLocalNetworkedPlayers();
             spawned = false;
 
@@ -210,20 +235,27 @@ namespace Multiplayer
             var state = local.GetComponent<PlayerState>();
             if (state == null) return;
 
-            Vector2 spawnPos = GetCachedOrPickSpawnPosition(state.player_framework, forceNewPick: false);
+            Vector2 spawnAnchor = GetCachedOrPickSpawnPosition(state.player_framework, forceNewPick: false);
+            Vector2 standPos = ResolveStandPosition(spawnAnchor);
 
             var rb = local.GetComponent<Rigidbody2D>();
             if (rb != null)
             {
                 rb.velocity = Vector2.zero;
-                rb.position = spawnPos;
+                rb.position = standPos;
             }
             else
             {
-                local.transform.position = spawnPos;
+                local.transform.position = standPos;
             }
 
-            EnsureSpawnPlatformPainted(state.player_framework, spawnPos);
+            EnsureSpawnPlatformPainted(state.player_framework, spawnAnchor);
+        }
+
+        private static Vector2 ResolveStandPosition(Vector2 spawnAnchor)
+        {
+            Physics2D.SyncTransforms();
+            return SpawnPlatformPreview.ResolvePlayerStandPosition(spawnAnchor);
         }
 
         private Vector2 GetCachedOrPickSpawnPosition(Framework color, bool forceNewPick)
@@ -295,10 +327,17 @@ namespace Multiplayer
 
         private void TrySpawn(bool forceRespawn = false)
         {
+            if (forceRespawn)
+            {
+                spawned = false;
+                _cachedLocalSpawnPosition = null;
+            }
+
             if (spawned && FindLocalNetworkedPlayer() == null)
                 spawned = false;
 
-            if (spawned || s_spawnInProgress) return;
+            if (s_spawnInProgress) return;
+            if (spawned && !forceRespawn) return;
 
             if (!forceRespawn && FindLocalNetworkedPlayer() != null)
             {
@@ -312,20 +351,19 @@ namespace Multiplayer
                 return;
             }
 
-            Framework myColor = MultiplayerColorAssignment.TryGetLocalClaimedColor(out Framework claimed)
-                ? claimed
-                : MultiplayerColorAssignment.ClaimForLocalPlayer();
+            Framework myColor = MultiplayerColorAssignment.ClaimForLocalPlayer();
 
             string prefabName = myColor == Framework.BLACK ? blackPrefabName : whitePrefabName;
-            Vector2 spawnPos = GetCachedOrPickSpawnPosition(myColor, forceNewPick: true);
+            Vector2 spawnAnchor = GetCachedOrPickSpawnPosition(myColor, forceNewPick: true);
+            Vector2 standPos = ResolveStandPosition(spawnAnchor);
 
             s_spawnInProgress = true;
             try
             {
-                PhotonNetwork.Instantiate(prefabName, spawnPos, Quaternion.identity);
+                PhotonNetwork.Instantiate(prefabName, standPos, Quaternion.identity);
                 spawned = true;
-                EnsureSpawnPlatformPainted(myColor, spawnPos);
-                Debug.Log($"[Multiplayer] Spawned local '{prefabName}' as {myColor} at {spawnPos}.");
+                EnsureSpawnPlatformPainted(myColor, spawnAnchor);
+                Debug.Log($"[Multiplayer] Spawned local '{prefabName}' as {myColor} at {standPos} (anchor {spawnAnchor}).");
             }
             finally
             {

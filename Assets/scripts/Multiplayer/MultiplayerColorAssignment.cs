@@ -29,12 +29,21 @@ namespace Multiplayer
                 return Framework.BLACK;
 
             Framework assigned = AssignForLocalPlayer(hostColor);
-            if (TryGetLocalClaimedColor(out Framework existing) && existing == assigned)
-                return assigned;
-
-            var props = new Hashtable { { MyFrameworkProperty, (int)assigned } };
-            PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+            if (!TryGetLocalClaimedColor(out Framework existing) || existing != assigned)
+            {
+                var props = new Hashtable { { MyFrameworkProperty, (int)assigned } };
+                PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+            }
             return assigned;
+        }
+
+        public static void ClearLocalColorClaim()
+        {
+            if (!PhotonNetwork.LocalPlayer.CustomProperties.ContainsKey(MyFrameworkProperty))
+                return;
+
+            var props = new Hashtable { { MyFrameworkProperty, null } };
+            PhotonNetwork.LocalPlayer.SetCustomProperties(props);
         }
 
         public static bool TryGetLocalAssignedColor(out Framework color)
