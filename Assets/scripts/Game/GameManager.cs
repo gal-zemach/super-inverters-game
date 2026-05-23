@@ -271,7 +271,7 @@ namespace Game {
 				var pv = go.GetComponentInChildren<PhotonView>();
 				if (frozen)
 				{
-					rb.velocity = Vector2.zero;
+					rb.linearVelocity = Vector2.zero;
 					rb.simulated = false;
 				}
 				else if (pv == null || pv.IsMine)

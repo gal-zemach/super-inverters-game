@@ -149,6 +149,38 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-05-23 — Unity 6 migration: compiles & runs on 6000.4.4f1, but host hard-freezes on MP exit (engine deadlock) → switching to 6.3 LTS
+**Agent session goal:** Open project in Unity 6 LTS, migrate, fix compile errors, re-run MP checklist.
+
+**MCP status:** No Unity Editor MCP is connected to Claude Code this session. Setting up CoplayDev "MCP for Unity" was chosen but DEFERRED (compile/runtime issues came first). Resume path: Unity `Window > Package Manager > + > Add package from git URL` → `https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main`; prereqs (python3 3.14, uv 0.11, node) already installed; then Configure the Claude Code client + **RESTART Claude Code** (MCP servers load only at startup, so the configuring session can't use them).
+
+**Migration so far (UNCOMMITTED on Unity-upgrade):**
+- Opened in **6000.4.4f1** → Safe Mode on 4 compile errors. ProjectVersion.txt now 6000.4.4f1; Library regenerated (gitignored).
+- **Fix (KEEP):** removed `[SerializeField]` from 4 *properties* (Unity 6's Roslyn enforces field-only target → CS0592): `Assets/scripts/Shot/ShotState.cs` (Rotation/Position/Forward) + `Assets/scripts/Shell/ShellView.cs` (Position). No-ops anyway (Unity never serializes get/set props). Exiting Safe Mode restored the Photon/ParrelSync editor menus (they were missing only because Safe Mode loads a subset of assemblies).
+- Left alone: CS0108 warning `BlinkingPlatformManager.FixedUpdate hides PlatformManager.FixedUpdate` (non-blocking).
+
+**MP works on 6.4:** ParrelSync 2-peer join works. First join threw `ExceptionOnConnect` (WSS-fallback timeout) but was **transient — retry fixed it**. Photon Cloud up; host connects EU master over UDP. PUN NOT broken by the upgrade. (PhotonServerSettings present, App ID `159a8424-…`, gitignored.)
+
+**BLOCKING BUG — host editor HARD-FREEZES on "back to main menu" after MP game-over** (guest exits fine):
+- Diagnosed via macOS `sample` of the frozen PID (snapshots in /tmp/uhang_*.txt): main thread 100% deadlocked at `DelayedCallManager::Update → SpriteRenderer::MainThreadCleanup → PersistentManager::GetPathName → _pthread_mutex_firstfit_lock_wait`. No other thread holds that native lock → **orphaned by a "prematurely finalized" thread** (recurring log warning). Reproduced identically twice.
+- **NOT game code, NOT a Photon API call, NOT the exit C# path** — pure native engine deadlock downstream of `SceneManager.LoadScene`. Ruled out: exit logic (while-loops are yielding coroutines), lightmapper switch (no effect), PUN version (already near-latest lib 4.1.8.17 / PUN2 v2.50, Unity-6-compatible → updating PUN deprioritized).
+- `Thread … prematurely finalized` is a documented Unity **macOS** issue (GPU-lightmapper context). Verdict: a Unity **6.4-on-macOS engine threading deadlock**. KEY: **6000.4 is an Update release, NOT LTS.** True LTS = 6000.0 (until Oct 2026) and 6000.3 (until Dec 2027).
+- **Decision (user):** test a different Unity patch → **Unity 6.3 LTS `6000.3.15f1`**.
+
+**Temp `[ExitDebug]` breadcrumbs** were added to GameManager exit methods then **removed** this session (red herring).
+
+**State left behind:** Unity-upgrade, uncommitted: ShotState.cs + ShellView.cs `[SerializeField]` fixes (KEEP), ProjectVersion.txt bump + migration Library/ProjectSettings churn. Nothing committed or pushed.
+
+**Next agent should:**
+1. After user installs **6000.3.15f1**: quit all editors, delete `Library/` (clean reimport), open project in 6.3 LTS, recreate the ParrelSync clone, re-test host "back to main menu" after an MP round.
+2. If freeze GONE on 6.3 → finish the MP checklist, then commit the migration (the 2 SerializeField fixes + ProjectVersion) on Unity-upgrade ONLY; set up Unity MCP if still wanted.
+3. If freeze PERSISTS on 6.3 → engine-wide: try `6000.0.75f1` (6.0 LTS), test single-player level→menu to isolate Photon, and/or report to Unity with a /tmp/uhang sample.
+
+**RESOLVED 2026-05-23 (later):** Freeze is GONE on **Unity 6.3 LTS (`6000.3.16f1`)** after a clean `Library/` reimport — confirms the back-to-main-menu hang was a Unity **6.4** (non-LTS Update build) macOS engine deadlock. **6.3 LTS is the migration target now.** Migration still UNCOMMITTED on Unity-upgrade (KEEP the 2 SerializeField fixes; ProjectVersion now 6000.3.16f1).
+**NEW BUG found on 6.3:** MP **game-over desync (= score desync)** — guest showed the game-over screen, host did NOT and kept playing. **Confirmed from logs:** one peer logged `BlackPlayer Lost`, the other `WhitePlayer Lost` — the two editors **disagree on who ran out of lives**. Root: lives live in a **per-peer local `ScoreKeeper`** (`GameState.cs` Start/initializeScores/decreaseScore) and **each peer independently decides game-over** in `GameManager.DoPlayerKilled` (line 380; check `hasNoLives && _endGameMenu!=null` → `endGame`). The counts DRIFT, so peers reach game-over at different times / for different players.
+  - Likely divergence sources to check: (a) `if (CountdownActive) return;` (GameManager:382) dropping a kill on only one peer (per-peer countdown timing); (b) a non-networked/local `DoPlayerKilled` path double-counting; (c) victim-name derivation / "(Clone)" normalization mismatch so `decreaseScore` hits a different key on each peer. Kill path today: `PlayerManager.OnTriggerExit2D` (IsMine-gated) → `PlayerKilled` → `RPC RPCPlayerKilled AllViaServer` → `DoPlayerKilled` on both.
+  - **Robust fix direction:** make game-over **authoritative** — master decides `hasNoLives`/win and RPCs the end-game to ALL (so both peers end together for the same winner), instead of each peer deciding from its own drifting score. Optionally also sync ScoreKeeper from the master. NOT yet implemented. Likely a pre-existing MP weakness, not migration-specific.
+
 ### 2026-05-22 — Pre-upgrade baseline (Unity 2020.3.48f1) → Unity 6 LTS migration branch
 **Agent session goal:** Lock a known-good **2020.3.48f1** baseline before Unity upgrade; hand off migration to a **Unity MCP-capable agent** (user switched agents — baseline agent could not drive the Editor).
 

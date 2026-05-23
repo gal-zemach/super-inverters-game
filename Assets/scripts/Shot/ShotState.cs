@@ -16,7 +16,7 @@ namespace Game{
 		// platform collision handlers check this flag and skip UpdateHit.
 		[HideInInspector] public bool isGhost = false;
 
-		[SerializeField] public float Rotation {
+		public float Rotation {
 			get {
 				return transform.eulerAngles.z;
 			}
@@ -27,7 +27,7 @@ namespace Game{
 			}
 		}
 
-		[SerializeField]  public Vector2 Position {
+		public Vector2 Position {
 			get {
 				return transform.position;
 			}
@@ -36,7 +36,7 @@ namespace Game{
 			}
 		}
 
-		[SerializeField]  public Vector2 Forward {
+		public Vector2 Forward {
 			get {
 				return Vector2.right.Rotate(Rotation * Mathf.Deg2Rad);
 			}

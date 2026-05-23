@@ -33,10 +33,10 @@ namespace Game{
 
 		public Vector2 Velocity{
 			get {
-				return body.velocity;
+				return body.linearVelocity;
 			}
 			set {
-				body.velocity = value;
+				body.linearVelocity = value;
 			}
 		}
 
