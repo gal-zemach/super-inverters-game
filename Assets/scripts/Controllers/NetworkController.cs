@@ -48,7 +48,7 @@ namespace Controllers
         protected override float update_moving_direction()
         {
             if (_photonView != null && _photonView.IsMine) return 0f;
-            return _inputView != null ? _inputView.RemoteAim.x : 0f;
+            return _inputView != null ? _inputView.RemoteMoveX : 0f;
         }
 
         protected override Vector2 update_aim_direction()

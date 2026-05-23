@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Controllers;
@@ -15,6 +15,7 @@ namespace Game{
 		private PlayerState _playerState;
 
 		private Controller[] controllers;
+		private MouseAimController _mouseAim;
 		
 		[SerializeField] 
 		public bool EnableSFX = false;
@@ -46,8 +47,13 @@ namespace Game{
 		public float RegularGravityScale = 1;
 		public float FallingGravityScale = 1;
 
-		[SerializeField, Tooltip("Lower value makes shooting faster")]
-		public int turnsBetweenShots = 5;
+		[SerializeField, Tooltip("Physics frames between shots. Lower = faster (2 ≈ very high rate at 50 Hz).")]
+		private int turnsBetweenShots = 2;
+
+		[SerializeField, Tooltip("Max seconds of continuous fire per hold before you must release.")]
+		private float burstFireDurationSeconds = 1.2f;
+
+		private float InterShotCooldownSeconds => turnsBetweenShots * Time.fixedDeltaTime;
 
 		[SerializeField, Tooltip("This *2 is the shells' random angle range.")]
 		public float shellAngleRange = 10f;
@@ -67,8 +73,21 @@ namespace Game{
 		public bool isGrounded;
 		private bool canDoubleJump;
 		private float jumpRatio = 0.2f;
-		private int _timesSinceFired = 0;
+		private float _nextShootTime;
+		private bool _burstActive;
+		private float _burstStartTime;
 		private float Jump_Y_Threshold = 5f;
+
+		/// <summary>1 = just fired (inter-shot cooldown active), 0 = ready for next shot in burst.</summary>
+		public float ShootCooldown01
+		{
+			get
+			{
+				float cd = InterShotCooldownSeconds;
+				if (cd <= 0f) return 0f;
+				return Mathf.Clamp01((_nextShootTime - Time.time) / cd);
+			}
+		}
 
 		// Used for checking if player is grounded
 		private Transform overlap_topLeft, overlap_bottomRight;
@@ -96,6 +115,7 @@ namespace Game{
 			_rigidbody2D = GetComponent<Rigidbody2D>();
 
 			controllers = GetComponents<Controller>();
+			_mouseAim = GetComponent<MouseAimController>();
 
 			overlap_topLeft = transform.Find(Values.PLAYER_TOP_LEFT_GAMEOBJ_NAME);
 			overlap_bottomRight = transform.Find(Values.PLAYER_BOT_RIGHT_GAMEOBJ_NAME);
@@ -107,6 +127,7 @@ namespace Game{
 		void Start ()
 		{
 			_lastHorizontalAimDir = transform.position.x >= 0f ? 1 : -1;
+			ConfigureMouseAim();
 			_playerView.SetSpriteColor(_playerState.player_framework);
 
 			// layer of platforms for checking if grounded
@@ -175,47 +196,60 @@ namespace Game{
 		void FixedUpdate()
 		{
 			if (controlsDisabled || GameManager.CountdownActive) return;
-			
+
+			bool isShootingThisFrame = false;
+			bool fireHeldThisFrame = false;
+
 			foreach (var controller in controllers)
 			{
-				if (controller != null)
+				if (controller == null) continue;
+
+				updateGrounded();
+
+				if (controller.getDown())
+					getOffPlatform();
+
+				move(movingDirection);
+
+				if (Mathf.Approximately(movingDirection.x, 0) && isGrounded)
+					slowHorizontalVelocity(bonusFriction);
+
+				_playerView.changeCrosshairDirection(shootingDirection);
+
+				if (controller.shoot())
 				{
-					updateGrounded();
-
-					if (controller.getDown())
-						getOffPlatform();
-
-					move(movingDirection);
-
-					// used so the player doesn't slide as much
-					if (Mathf.Approximately(movingDirection.x, 0) && isGrounded)
-					{
-						slowHorizontalVelocity(bonusFriction);
-					}
-
-					if (_timesSinceFired > 0) _timesSinceFired--;
-
-					_playerView.changeCrosshairDirection(shootingDirection);
-					if (controller.shoot())
-					{
-						shoot(shootingDirection);
-						_playerView.isShooting = true;
-					} else {
-						_playerView.isShooting = false;
-					}
-
-					// Different gravity scale during fall
-					if (_rigidbody2D.velocity.y < 0) _rigidbody2D.gravityScale = FallingGravityScale;
-					else _rigidbody2D.gravityScale = RegularGravityScale;
-
-					// limiting y speed while falling
-					if (!isGrounded && _rigidbody2D.velocity.y < -MaxFallingVelocity)
-					{
-						_rigidbody2D.velocity = new Vector2(_rigidbody2D.velocity.x, -MaxFallingVelocity);
-					}
-					currentVelocity = _rigidbody2D.velocity;
+					fireHeldThisFrame = true;
+					if (TryShoot(shootingDirection))
+						isShootingThisFrame = true;
 				}
+
+				if (_rigidbody2D.velocity.y < 0) _rigidbody2D.gravityScale = FallingGravityScale;
+				else _rigidbody2D.gravityScale = RegularGravityScale;
+
+				if (!isGrounded && _rigidbody2D.velocity.y < -MaxFallingVelocity)
+					_rigidbody2D.velocity = new Vector2(_rigidbody2D.velocity.x, -MaxFallingVelocity);
+
+				currentVelocity = _rigidbody2D.velocity;
 			}
+
+			if (!fireHeldThisFrame)
+				ResetBurstState();
+
+			_playerView.isShooting = isShootingThisFrame;
+		}
+
+		private void ResetBurstState()
+		{
+			_burstActive = false;
+			_burstStartTime = 0f;
+		}
+
+		private bool CanShoot()
+		{
+			if (Time.time < _nextShootTime) return false;
+			if (_burstActive && Time.time - _burstStartTime >= burstFireDurationSeconds)
+				return false;
+			return true;
 		}
 
 
@@ -225,15 +259,44 @@ namespace Game{
 		}
 
 
+		private void ConfigureMouseAim()
+		{
+			if (_mouseAim == null) return;
+
+			var photonView = GetComponent<PhotonView>();
+			bool isLocal = photonView == null || photonView.IsMine;
+			bool useMouse = isLocal && ShouldUseMouseAimForPlayer();
+			_mouseAim.enabled = useMouse;
+		}
+
+		private bool ShouldUseMouseAimForPlayer()
+		{
+			if (PhotonNetwork.InRoom) return true;
+			// Single-player: one mouse — Black player only (White keeps keyboard aim).
+			return _playerState.player_framework == Framework.BLACK;
+		}
+
 		private void updateDirection()
 		{
 			bool movingDirChanged = false;
 			bool aimDirChanged = false;
 			bool anyAimInput = false;
 			Vector2 tempAimDir = Vector2.zero;
+
+			if (_mouseAim != null && _mouseAim.enabled)
+			{
+				tempAimDir = _mouseAim.aim_direction();
+				if (tempAimDir != Vector2.zero)
+				{
+					shootingDirection = tempAimDir;
+					aimDirChanged = true;
+					anyAimInput = true;
+				}
+			}
 			
 			foreach (var controller in controllers)
 			{
+				if (controller == _mouseAim) continue;
 				var behaviour = controller as MonoBehaviour;
 				if (behaviour != null && !behaviour.enabled) continue;
 
@@ -244,12 +307,15 @@ namespace Game{
 					movingDirChanged = true;
 				}
 				
-				tempAimDir = controller.aim_direction();
-				if (tempAimDir != Vector2.zero)
+				if (!aimDirChanged)
 				{
-					shootingDirection = tempAimDir;
-					aimDirChanged = true;
-					anyAimInput = true;
+					tempAimDir = controller.aim_direction();
+					if (tempAimDir != Vector2.zero)
+					{
+						shootingDirection = tempAimDir;
+						aimDirChanged = true;
+						anyAimInput = true;
+					}
 				}
 			}
 			if (!movingDirChanged) movingDirection = Vector2.zero;
@@ -257,7 +323,7 @@ namespace Game{
 			if (!aimDirChanged)
 			{
 				// movingDirection is horizontal-only; don't replace steep up/down aim on landing.
-				if (movingDirection != Vector2.zero && Mathf.Abs(shootingDirection.y) < 0.5f)
+				if (movingDirection != Vector2.zero && IsSideAimBucket(shootingDirection))
 					shootingDirection = movingDirection;
 				else if (isGrounded && !anyAimInput)
 					shootingDirection = Vector2.zero;
@@ -267,28 +333,51 @@ namespace Game{
 				lastNonZeroDirection = shootingDirection;
 			}
 
-			// updating animation parameters
-			// vertical_dir is the aim's "verticalness" in [-1, 1] — the angle
-			// from horizontal, normalized to ±π/2. Using the angle (rather than
-			// raw shootingDirection.y) lets keyboard W+A produce 0.5 (up-diag)
-			// instead of 1.0 (up), so the up_diag/down_diag animation buckets
-			// actually trigger for keyboard input.
 			Vector2 animAim = shootingDirection;
 			if (animAim == Vector2.zero && !isGrounded)
 				animAim = lastNonZeroDirection;
-			if (animAim == Vector2.zero)
-				_playerView.vertical_dir = 0f;
-			else
-				_playerView.vertical_dir = Mathf.Atan2(animAim.y, Mathf.Abs(animAim.x)) / (Mathf.PI / 2f);
+			ClassifyAimDirection(animAim, _lastHorizontalAimDir,
+				out _playerView.vertical_dir, out _playerView.horizontal_dir);
+			if (animAim != Vector2.zero)
+				_lastHorizontalAimDir = _playerView.horizontal_dir;
 
 			_playerView.isMoving = isGrounded && !Mathf.Approximately(movingDirection.x, 0);
-			if (Mathf.Approximately(shootingDirection.x, 0))
-				_playerView.horizontal_dir = _lastHorizontalAimDir;
+		}
+
+		// Four aim regions with boundaries at |x| = |y| (a 45°-rotated diamond).
+		// Mostly horizontal → side; mostly vertical → up or down.
+		private static void ClassifyAimDirection(Vector2 aim, int lastHorizontal,
+			out float verticalDir, out int horizontalDir)
+		{
+			if (aim == Vector2.zero)
+			{
+				verticalDir = 0f;
+				horizontalDir = lastHorizontal;
+				return;
+			}
+
+			if (Mathf.Abs(aim.x) >= Mathf.Abs(aim.y))
+			{
+				verticalDir = 0f;
+				horizontalDir = aim.x >= 0f ? 1 : -1;
+			}
+			else if (aim.y > 0f)
+			{
+				verticalDir = 1f;
+				horizontalDir = Mathf.Approximately(aim.x, 0f) ? lastHorizontal : (int)Mathf.Sign(aim.x);
+			}
 			else
 			{
-				_playerView.horizontal_dir = (int) Mathf.Sign(shootingDirection.x);
-				_lastHorizontalAimDir = _playerView.horizontal_dir;
+				verticalDir = -1f;
+				horizontalDir = Mathf.Approximately(aim.x, 0f) ? lastHorizontal : (int)Mathf.Sign(aim.x);
 			}
+		}
+
+		private static bool IsSideAimBucket(Vector2 aim)
+		{
+			if (aim == Vector2.zero) return true;
+			ClassifyAimDirection(aim, 1, out float verticalDir, out _);
+			return verticalDir == 0f;
 		}
 		
 
@@ -351,10 +440,9 @@ namespace Game{
 			}
 		}
 
-		private void shoot(Vector2 direction)
+		private bool TryShoot(Vector2 direction)
 		{
-			if (_timesSinceFired > 0) return;
-			_timesSinceFired = turnsBetweenShots;
+			if (!CanShoot()) return false;
 
 			// When the player is standing still with no aim input, `direction`
 			// is (0, 0) and GetAngle returns 0 → shot fires Vector2.right.
@@ -375,8 +463,16 @@ namespace Game{
 			if (PhotonNetwork.InRoom)
 			{
 				var pv = GetComponent<PhotonView>();
-				if (pv != null && !pv.IsMine) return;
+				if (pv != null && !pv.IsMine) return false;
 			}
+
+			if (!_burstActive)
+			{
+				_burstActive = true;
+				_burstStartTime = Time.time;
+			}
+
+			_nextShootTime = Time.time + InterShotCooldownSeconds;
 
 			Vector2 pos = _rigidbody2D.position;
 			if (EnableSFX) _sfx.PlayShoot();
@@ -404,6 +500,7 @@ namespace Game{
 				_rigidbody2D.MovePosition(new Vector3(pos.x - direction.x * recoil, pos.y, transform.position.z));
 			}
 
+			return true;
 		}
 
 		private void slowHorizontalVelocity(float factor)

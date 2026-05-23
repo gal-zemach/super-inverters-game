@@ -13,7 +13,7 @@
 
 - **Repo path:** `/Users/nadav/Documents/GitHub/super-inverters-game/`
 - **The Claude default cwd `/Users/nadav/Documents/Claude/Super Inverters Reloaded/` is EMPTY.** The actual code is in the path above. `cd` there before doing anything.
-- **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`, currently clean).
+- **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`). **Dirty working tree** as of 2026-05-22 — mouse-aim + 3-dir animation work + side-aim debug (user chose **not to commit** until side pose is fixed).
 - **Engine:** Unity **2020.3.48f1** (LTS). Originally a Unity 2017 project. **Do not "upgrade" the project further** — 2020 is the version that builds and runs. 2017 was tried and failed. Unity Hub shows a red icon next to this version (likely just a "no longer supported by Unity" warning, not a project error — confirm before reacting to it).
 - **Project is registered in Unity Hub** under the name `super-inverters-game`. The user opens the project from there. Don't `Add project` again.
 - **Latest published web build:** https://nmeidan.itch.io/superinverters — the live WebGL build, "the latest web version."
@@ -148,6 +148,95 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-05-22 — Shoot cooldown, lower SFX, HUD indicator
+**What I did:**
+- `PlayerManager` — `turnsBetweenShots` (2 = very high fire rate), `burstFireDurationSeconds` (1.2s continuous fire per hold; release fire to reset burst).
+- `PlayerSFX.shootVolume` (default 0.35).
+- `ShootCooldownUI` on Black/White player prefabs — radial fill for inter-shot cooldown; move **ShootCooldownHUD/CooldownIndicator** RectTransform in prefab to reposition (or context menu **Rebuild Cooldown HUD** on component).
+
+### 2026-05-22 — Random MP spawn points (3 per color)
+**Agent session goal:** Opponent could camp the single predictable spawn platform and spawn-kill loop victims.
+**What I did:**
+- `MultiplayerSpawner` — `blackSpawnPositions` / `whiteSpawnPositions` (3 each); random pick on each `TrySpawn`/`ForceRespawn`; `_cachedLocalSpawnPosition` for countdown reset (same point for that life).
+- `level_1-multiplayer` — six coordinates on Bootstrap **MultiplayerSpawner** (see spawn tuning below).
+**ParrelSync test:** Die repeatedly — respawn moves among 3 points; match countdown reset does not re-roll spawn for that life.
+
+**Current spawn coords (user-tuned in Scene view, 2026-05-22):**
+- Black: `(-30.7, 31.04)`, `(-10.7, 34.46)`, `(-40.7, 42.88)`
+- White: `(38.12, 24.73)`, `(20.12, 25.90)`, `(30.7, 34.89)`
+
+**Tuning MP spawn positions:** Open `level_1-multiplayer` → select **Bootstrap** (`MultiplayerSpawner`). Use **Scene view** (not Game view): drag colored spawn handles; **green ring** = landing on platform below; dotted yellow line = drop from spawn height. Inspector button **Frame spawn points in Scene view**, or menu **Multiplayer → Frame level_1-multiplayer spawn area**. Scene auto-frames spawn area on open. `HideSceneUIInEditMode` on **Game** hides BG / EndGameMenu / countdown UI while editing so platforms are visible (restored in Play mode).
+
+### 2026-05-22 — Main menu button layout (user-tuned)
+**What changed:** `main_menu.unity` — **multiplayer button** anchored `y: 29.6` (was `0`); **singleplayer button** `y: -30.2` (was `-50`). Spacing only; multiplayer still loads `Multiplayer` lobby scene.
+
+### 2026-05-22 — Lobby: auto-assign colors (no pre-game pick) — confirmed, debug removed
+**Agent session goal:** Two players could both pick White via lobby Host buttons; user wanted no color choice before match.
+**What I did:**
+- Removed Host as Black/White UI → single **Create room** button.
+- `MultiplayerColorAssignment.cs` — master gets `roomMasterColor` (Bootstrap default Black); joiner opposite; claims `myFramework` in `OnJoinedRoom`.
+- Lobby status: “You are playing as Black/White”.
+**Next agent should:** commit when user asks.
+
+### 2026-05-22 — Multiplayer lobby UX (waiting room + join UI)
+**Agent session goal:** Formal lobby: host picks color and shares link; guest joins via UI; auto-start game when room is full.
+**What I did:**
+- `MultiplayerSceneNames.cs` — `Multiplayer` (lobby) vs `level_1-multiplayer` (game). `GameManager.IsMultiplayerLevel()` uses active scene name only (lobby no longer triggers countdown).
+- `MultiplayerBootstrap.cs` — connect-only in lobby; `CreateRoom()` / `JoinRoomCode(string)`; `InRoom` guard on reconnect; room-full → `LoadLevel` unchanged.
+- `MultiplayerLobbyUI.cs` — Create room, guest join field, share URL + Copy, status text. Replaces deleted `LinkShareUI.cs`.
+- Scenes: `Multiplayer.unity` = Bootstrap + lobby UI only (removed Game prefab + Spawner). `level_1-multiplayer` Bootstrap = Spawner only.
+- `main_menu` multiplayer button → `LoadSceneByName("Multiplayer")`. `main_menu.unity` added to build settings.
+**ParrelSync test:** Host: menu or Play `Multiplayer.unity` → Create room → copy link. Guest: lobby → paste code → Join (no color buttons). Status should show opposite colors; both load game scene → spawn → synced countdown.
+**WebGL test:** Guest with `?room=CODE` auto-joins from lobby (no form).
+**Next agent should:** playtest; commit when user asks.
+
+### 2026-05-22 — MP countdown sync + host lobby freedom; debug instrumentation removed
+**Agent session goal:** User confirmed MP countdown/host-wait behavior fixed; remove debug logging.
+**What I did:**
+- Removed `DebugSessionLog.cs` and agent-log regions from `GameManager.cs`.
+- **Kept:** RPC-synced match countdown (`RPCStartMatchCountdown`); host/joiner **not** input-locked until countdown; `IsReadyForMatchCountdown()` (room full + 2 scene avatars); spawn reset via `MultiplayerSpawner.ResetLocalPlayerToSpawnPosition()` before Ready/Set/Go.
+**State left behind:** uncommitted mouse-aim + animator + MP countdown bundle on `Multiplayer`.
+**Next agent should:** commit when user asks.
+
+### 2026-05-22 — Side aim animation fixed; debug instrumentation removed
+**Agent session goal:** User confirmed side mouse-aim pose works; remove debug logging.
+**What I did:**
+- Removed `Assets/scripts/Utils/DebugSessionLog.cs` and all `#region agent log` blocks from `PlayerView.cs` / `PlayerManager.cs`.
+- **Fix kept:** `PlayerView.AssignDirectionalClip` resolves `idle_0/1/2` by exact clip name (prefab override → Editor asset path → `animationClips`); prevents slot 1 from getting `idle_2` (up pose) when aiming side.
+**State left behind:** uncommitted mouse-aim + animator + side-aim fix bundle on `Multiplayer`; user to commit when ready.
+**Next agent should:** commit when user asks; optional MP/SP playtest matrix from mouse-aim entry.
+
+### 2026-05-22 — Side aim animation still broken (debug session `5efe84`, parked) — RESOLVED
+**Agent session goal:** Fix side (horizontal) aim pose after mouse-aim + 3-direction animator work; user stopped for the day without committing.
+**What I did (debug, runtime-evidence):**
+- Instrumented `PlayerManager.updateDirection` (hypothesis A) and `PlayerView` clip cache / sampling (B–E) via `Assets/scripts/Utils/DebugSessionLog.cs` → `.cursor/debug-5efe84.log` (Editor-only NDJSON).
+- **Confirmed:** aim classification is correct (`verticalDir:0`, layer `not_shooting_1`, `wantsSide:true`) — not a `PlayerManager` bucketing bug.
+- **Confirmed root cause:** `idle_1` / `white_idle_1` is **not** in `RuntimeAnimatorController.animationClips` (only `idle_0` + `idle_2` from synced override layers). Side sampling calls `SampleAnimation` with a null clip → no side pose.
+- **Why briefly correct at load:** base-layer idle state still references `idle_1`; first frame shows side, then `ApplyAnimatorState` + failed sampling leaves a non-side pose.
+- **Attempted fixes (still broken in playtest):**
+  - Added `idle_1` motion override on `not_shooting_1` in black/white `.controller` — did **not** add clip to `animationClips`.
+  - `Resources.FindObjectsOfTypeAll` at `Awake` — failed (`resolvedViaFind:false`) because clip not loaded yet.
+  - `PlayerView` prefab `_directionalIdleClipsOverride` arrays on `BlackPlayer` / `WhitePlayer` + Editor `AssetDatabase.LoadAssetAtPath` fallback + lazy re-resolve in `applyDirectionalAimPose`.
+- **Latest log anomaly (post-fix3):** cache reports `"idle1":"idle_2"` and sampling uses `idle_2` for `idx:1` — wrong clip for side bucket; next agent should verify override slot 1 resolves to **`idle_1` by name**, not `idle_2` (possible overwrite order or asset rename mismatch).
+- Fire input moved to **LMB** in `MouseAimController`; `isShooting` OR across controllers in `PlayerManager`.
+**State left behind:** large **uncommitted** diff on `Multiplayer` (controllers, `PlayerView`, `PlayerManager`, animator assets, idle clip renames/deletes, both player prefabs, debug logger). User explicitly **not committing** until side aim works. Debug instrumentation still in code — remove after verified fix.
+**Next agent should:**
+1. Read `.cursor/debug-5efe84.log` (or re-run with `DebugSessionLog`) and fix slot-1 clip resolution so `idle1` is `idle_1` and `sampled:true` for `verticalDir:0`.
+2. Consider skipping `SampleAnimation` for side when reference layer + base idle already show `idle_1`, **or** assign side clip via override layer the same way as `not_shooting_0` / `not_shooting_2` (full `m_Motions` set on synced layers).
+3. Remove `DebugSessionLog` + `#region agent log` blocks after user confirms fix; then commit when user asks.
+
+### 2026-05-22 — Mouse aim + 3-direction animations (mostly done; side pose open)
+**Agent session goal:** Continuous mouse aim from player position; WASD move only; simplify aim anim to down/side/up; replicate full aim + separate moveX over Photon.
+**What I did:**
+- `Assets/scripts/Controllers/MouseAimController.cs` — screen-to-world aim; LMB shoot; added to `BlackPlayer` / `WhitePlayer` prefabs (disabled by default; enabled on local MP peer via `PhotonInputView` + `PlayerManager.ConfigureMouseAim`; SP: Black only).
+- `MultiplayerKeyboardController` / `KeyboardController` — movement unchanged; aim returns zero when mouse controller active; MP keyboard no longer fires.
+- `PlayerManager` — mouse aim priority; `ClassifyAimDirection` dominant-axis bucketing; side-bucket landing guard; `isShooting` OR across controllers.
+- `PlayerView` — 3 aim layers (`not_shooting_0/1/2`); reference `not_shooting_1`; directional idle clip cache + `SampleAnimation` in `LateUpdate` (order 150); white clip prefix.
+- `PhotonInputView` / `NetworkController` — stream `Vector2 aim` + `float moveX` (no axis snap on aim).
+- Animator assets: removed diagonal layers/clips; renumbered `idle_0/1/2` and `white_idle_*`; fixed black/white `.controller` layer names.
+**Playtest status:** up/down and **side** aim work (2026-05-22). Side fix: exact-name clip assignment in `PlayerView.AssignDirectionalClip`.
+**State left behind:** same uncommitted tree; do not commit until side pose fixed (user 2026-05-22).
+
 ### 2026-05-22 — Spawn-first countdown (multiplayer)
 - **`GameManager`:** On scenes with `MultiplayerSpawner`, never use single-player `TryStartCountdownSinglePlayer` (`countDownEveryRound=1` would start before spawns). Each peer polls until **two** `player`-tagged objects with `PhotonView` exist, then runs `startCountDown` locally (players visible first, then frozen until "Go"). Script order: spawner −50, GameManager +100.
 - **Once per match:** `s_matchStartCountdownPlayed` survives `PhotonNetwork.LoadLevel` round reloads (death → 1.5s → reload) so Ready/Set/Fight does **not** loop every life; cleared on Replay / leaving room. Freeze + `CountdownActive` during the wait-for-both-players phase; deaths ignored while `CountdownActive`.
@@ -186,7 +275,7 @@ Most "current behavior" detail now lives as code comments; this is the orientati
 - **Prefabs:** `Assets/Prefabs/Player.prefab` is DEAD (0 scene refs). Real gameplay prefabs are `Assets/Resources/{Black,White}Player.prefab` (moved to Resources for `PhotonNetwork.Instantiate`). **Edit prefabs from the host Editor only** (ParrelSync clone save-block corrupts otherwise).
 - **Color assignment:** each peer claims its color via a `myFramework` player custom property (rejoin-safe); falls back to the `hostColor` room-property heuristic only if unclaimed.
 - **Networked input (Slice 4):** `PhotonInputView` owns the whole stream (aim + 4 button bools + position) as a single `IPunObservable`; `NetworkController : Controller` replays it on the remote; `MultiplayerKeyboardController` (WASD / Space / Shift) drives the local MP player. **PhotonTransformView was removed** — it drifted remotes "into the sky"; position is now Lerp'd inside `PhotonInputView`. PhotonView Synchronization = **Unreliable** (not "Unreliable On Change", which suppressed packets while idle). Remote rigidbody = Kinematic + `simulated = false`.
-- **MP scenes:** `Multiplayer.unity` = lobby; `level_1-multiplayer.unity` = the only networked level (static player GameObjects deleted; players spawned at runtime by `MultiplayerSpawner`; the `Game` GameObject has a PhotonView added directly because it's baked, not a prefab instance). `LinkShareUI` builds a copy-link bar programmatically on the host.
+- **MP scenes:** `Multiplayer.unity` = **lobby** (`MultiplayerBootstrap` + `MultiplayerLobbyUI` — Create room, guest join field, share link; auto color assign). `level_1-multiplayer.unity` = **game** (`MultiplayerSpawner` — 3 random spawn points per color; synced countdown in `GameManager`). Room full → master `PhotonNetwork.LoadLevel`.
 - **Slice 5 phase 2b/2c (current behavior):**
   - Platform paint RPC keyed by deterministic `networkId` = index after sorting all `PlatformManager` by **scene hierarchy path** (identical across peers; InstanceID/position were not, and caused id drift). Paint RPC = `RpcTarget.Others` (NOT buffered — buffered replays onto the fresh scene after reload).
   - Grey platforms pick their start color from a **deterministic FNV-style hash of the hierarchy path** in a room (not `Random.Range`, which differs per process). Single-player keeps Random.
@@ -220,5 +309,6 @@ Working theory: a Unity 2020.3.48 IL2CPP function-pointer-table bug hit by PUN's
 
 ### Next agent should
 1. Acknowledge the context-warning convention first (user auto-memory).
-2. Have the user playtest Phase 2d two-peer: peer A shoots → peer B sees the projectile fly; paint still applies once (no doubling/flicker); death + reload still work; single-player `level_1` shooting/paint unaffected. If good, bundle the 8 phase-2d files into one commit on `Multiplayer` (user pushes).
-3. Then the highest-leverage target is a **real WebGL two-peer build test** (the actual ship target, never proven) — but do the forum/issue-tracker search above first. Otherwise: add more MP levels, or tackle repo cleanup.
+2. Side aim fixed 2026-05-22; commit mouse-aim / animator / controller bundle when user asks.
+4. Phase 2d remote shot ghosts still need 2-peer playtest + commit if not done yet.
+5. Then: **real WebGL two-peer build test** (ship target) — forum/issue-tracker search for `abort(163)` / `nullFunc_vi` first; do not unilaterally upgrade Unity.

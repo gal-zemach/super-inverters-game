@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace Controllers
 {
-    // Multiplayer-only keyboard layout: WASD movement, Space jump, Shift fire.
+    // Multiplayer-only keyboard layout: WASD movement, Space jump. Fire is on MouseAimController (LMB).
     // Used instead of KeyboardController on the local player in a networked
     // session — both peers share the same key scheme since each peer has its
     // own keyboard. Disabled by default on the prefab so single-player co-op
@@ -11,7 +11,7 @@ namespace Controllers
     public class MultiplayerKeyboardController : Controller
     {
         private Vector2 _direction;
-        private bool _isJumping, _isShooting, _isGettingDown, _isPaused;
+        private bool _isJumping, _isGettingDown, _isPaused;
 
         protected override void Update()
         {
@@ -35,16 +35,17 @@ namespace Controllers
                 _isGettingDown = false;
             }
 
-            _isShooting = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             _isPaused = !inStartScene && Input.GetKeyDown(KeyCode.Escape);
 
             base.Update();
         }
 
         protected override float update_moving_direction() => _direction.x;
-        protected override Vector2 update_aim_direction() => _direction;
+
+        // Aim is driven by MouseAimController; W/S only affect jump / platform drop.
+        protected override Vector2 update_aim_direction() => Vector2.zero;
         public override bool jump()      => _isJumping;
-        public override bool shoot()     => _isShooting;
+        public override bool shoot()     => false;
         public override bool getDown()   => _isGettingDown;
         public override bool pauseMenu() => _isPaused;
     }

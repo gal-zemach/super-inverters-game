@@ -1,9 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Utils.Utils;
 
 namespace Game {
+	[DefaultExecutionOrder(150)]
 	public class PlayerView : MonoBehaviour
 	{
 		[SerializeField] 
@@ -34,15 +34,22 @@ namespace Game {
 		Dictionary<string, int> anim_layers = new Dictionary<string, int>();
 		
 		private int currentLayer;
-		// Animator sync target: not_shooting_2 drives timing for all other aim layers.
+		// Animator sync target: not_shooting_1 (side) drives timing for all other aim layers.
 		private int _referenceAimLayer;
 		
 		private string anim_not_shooting_prefix = "not_shooting_",  
 					   anim_shoot_prefix = "shooting_";
 
-		private int ANIM_DIR_NUMBER = 5;
-		private AnimationClip[] _idleClips = new AnimationClip[5];
-		private AnimationClip[] _idleShootClips = new AnimationClip[5];
+		private int ANIM_DIR_NUMBER = 3;
+		private AnimationClip[] _idleClips = new AnimationClip[3];
+		private AnimationClip[] _idleShootClips = new AnimationClip[3];
+		private bool _sampleDirectionalAimAfterAnimator;
+		private string _idleClipPrefix = "idle_";
+		private string _idleShootClipPrefix = "idle_shoot_";
+
+		// Side clip (index 1) is not listed on RuntimeAnimatorController.animationClips; prefab refs force load.
+		[SerializeField] private AnimationClip[] _directionalIdleClipsOverride = new AnimationClip[3];
+		[SerializeField] private AnimationClip[] _directionalIdleShootClipsOverride = new AnimationClip[3];
 		
 		void Awake () {
 			Init();
@@ -52,7 +59,7 @@ namespace Game {
 			_spriteRenderer = _animationGameObject.GetComponent<SpriteRenderer>();
 			_animator = _animationGameObject.GetComponent<Animator>();
 			updateAnimLayerDictionary();
-			_referenceAimLayer = anim_layers[anim_not_shooting_prefix + 2];
+			_referenceAimLayer = anim_layers[anim_not_shooting_prefix + 1];
 			currentLayer = _referenceAimLayer;
 			setActiveAimLayer(currentLayer);
 			cacheDirectionalIdleClips();
@@ -67,15 +74,13 @@ namespace Game {
 			_spriteRenderer.flipX = facingLeft;
 		}
 
-		// Called from PlayerManager.LateUpdate after aim + jump so layer weights match this frame.
+		// Called from PlayerManager.LateUpdate (order 100) after aim + jump.
 		public void ApplyAnimatorState()
 		{
-			// Jump state uses the same side-facing clip on every aim layer; keep the
-			// aim overlay pose while airborne when aiming steeply up or down.
-			bool steepAim = Mathf.Abs(vertical_dir) > 0.5f;
+			bool steepAim = vertical_dir != 0f;
 			bool suppressJumpAnim = (isJumping || isDoubleJumping) && steepAim;
-			// Sample steep aim whenever idle (in air, approaching land, or on ground).
-			bool useSteepAimSample = steepAim && !isMoving;
+			bool useDirectionalAimSample = !isMoving;
+			_animator.enabled = true;
 			_animator.SetBool("isJumping", isJumping && !suppressJumpAnim);
 			_animator.SetBool("isDoubleJumping", isDoubleJumping && !suppressJumpAnim);
 			_animator.SetBool("isShooting", isShooting);
@@ -86,33 +91,103 @@ namespace Game {
 			changeAnimationLayer();
 			_animator.Update(0f);
 
-			if (useSteepAimSample)
-				applySteepAimPose();
+			// Sample after this LateUpdate pass (order 150) so aim clips win over the SM.
+			_sampleDirectionalAimAfterAnimator = useDirectionalAimSample;
+		}
+
+		private void LateUpdate()
+		{
+			if (!_sampleDirectionalAimAfterAnimator) return;
+			_sampleDirectionalAimAfterAnimator = false;
+			applyDirectionalAimPose();
 		}
 
 		private void cacheDirectionalIdleClips()
 		{
+			var playerState = GetComponent<PlayerState>();
+			if (playerState != null && playerState.player_framework == Framework.WHITE)
+			{
+				_idleClipPrefix = "white_idle_";
+				_idleShootClipPrefix = "white_idle_shoot_";
+			}
+
 			var controller = _animator.runtimeAnimatorController;
 			if (controller == null) return;
-			foreach (var clip in controller.animationClips)
+
+			for (int i = 0; i < ANIM_DIR_NUMBER; i++)
+				_idleClips[i] = _idleShootClips[i] = null;
+
+			for (int i = 0; i < ANIM_DIR_NUMBER; i++)
+				AssignDirectionalClip(_idleClips, i, shoot: false, controller);
+			for (int i = 0; i < ANIM_DIR_NUMBER; i++)
+				AssignDirectionalClip(_idleShootClips, i, shoot: true, controller);
+		}
+
+		private void AssignDirectionalClip(AnimationClip[] slots, int index, bool shoot, RuntimeAnimatorController controller)
+		{
+			string expectedName = (shoot ? _idleShootClipPrefix : _idleClipPrefix) + index;
+			var overrides = shoot ? _directionalIdleShootClipsOverride : _directionalIdleClipsOverride;
+
+			if (overrides != null && index < overrides.Length && overrides[index] != null
+			    && overrides[index].name == expectedName)
+				slots[index] = overrides[index];
+
+#if UNITY_EDITOR
+			if (slots[index] == null)
+				slots[index] = LoadIdleClipAsset(index, shoot);
+#endif
+
+			if (slots[index] == null && controller != null)
 			{
-				if (clip.name.StartsWith("idle_shoot_")
-				    && int.TryParse(clip.name.Substring(11), out int shootIdx)
-				    && shootIdx >= 0 && shootIdx < ANIM_DIR_NUMBER)
-					_idleShootClips[shootIdx] = clip;
-				else if (clip.name.StartsWith("idle_")
-				         && int.TryParse(clip.name.Substring(5), out int idleIdx)
-				         && idleIdx >= 0 && idleIdx < ANIM_DIR_NUMBER)
-					_idleClips[idleIdx] = clip;
+				foreach (var clip in controller.animationClips)
+				{
+					if (clip.name == expectedName)
+					{
+						slots[index] = clip;
+						break;
+					}
+				}
 			}
 		}
 
-		// Synced override layers keep the leader's horizontal idle visible; sample the
-		// direction clip directly so steep aim shows the correct sprite in air and on land.
-		private void applySteepAimPose()
+		private bool ClipNameMatchesIndex(AnimationClip clip, int index, bool shoot) =>
+			clip != null && clip.name == (shoot ? _idleShootClipPrefix : _idleClipPrefix) + index;
+
+		private void resolveMissingIdleClips()
+		{
+			var controller = _animator != null ? _animator.runtimeAnimatorController : null;
+			for (int i = 0; i < ANIM_DIR_NUMBER; i++)
+			{
+				if (!ClipNameMatchesIndex(_idleClips[i], i, shoot: false))
+					AssignDirectionalClip(_idleClips, i, shoot: false, controller);
+				if (!ClipNameMatchesIndex(_idleShootClips[i], i, shoot: true))
+					AssignDirectionalClip(_idleShootClips, i, shoot: true, controller);
+			}
+		}
+
+#if UNITY_EDITOR
+		private AnimationClip LoadIdleClipAsset(int index, bool shoot)
+		{
+			var playerState = GetComponent<PlayerState>();
+			bool white = playerState != null && playerState.player_framework == Framework.WHITE;
+			string folder = white ? "white" : "black";
+			string clipName = shoot ? _idleShootClipPrefix + index : _idleClipPrefix + index;
+			string subFolder = shoot ? "idle_shoot_directions" : "idle_directions";
+			string path = $"Assets/Animations/Player/{folder}/{subFolder}/{clipName}.anim";
+			return UnityEditor.AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+		}
+#endif
+
+		// Override layers only swap motions for up/down; sample idle_* directly for all buckets.
+		private void applyDirectionalAimPose()
 		{
 			int idx = animGetDirectionIndex(vertical_dir);
 			var clip = isShooting ? _idleShootClips[idx] : _idleClips[idx];
+			if (clip == null)
+			{
+				resolveMissingIdleClips();
+				clip = isShooting ? _idleShootClips[idx] : _idleClips[idx];
+			}
 			if (clip != null)
 				clip.SampleAnimation(_animationGameObject, 0f);
 		}
@@ -191,7 +266,7 @@ namespace Game {
 
 		private void setActiveAimLayer(int activeLayer)
 		{
-			// Synced aim layers (not_shooting_0, shooting_4, etc.) mirror not_shooting_2.
+			// Synced aim layers mirror not_shooting_1 (side reference).
 			// The reference layer must stay at weight 1 or overrides never show.
 			foreach (var entry in anim_layers)
 			{
@@ -203,9 +278,9 @@ namespace Game {
 
 		private int animGetDirectionIndex(float yDir)
 		{
-			int val = Mathf.FloorToInt((yDir + 1)/ 2 * (ANIM_DIR_NUMBER - .01f));
-			if (val < 0 || val > 4) Debug.Log(yDir + ", " + val);
-			return val;
+			if (yDir < 0f) return 0;
+			if (yDir > 0f) return 2;
+			return 1;
 		}
 	}
 }

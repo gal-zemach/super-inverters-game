@@ -13,6 +13,10 @@ namespace Game {
 			SceneManager.LoadScene(index);
 		}
 
+		public void LoadSceneByName(string sceneName) {
+			SceneManager.LoadScene(sceneName);
+		}
+
 		public void ReloadCurrentScene()
 		{
 			var gameManager = GameObject.Find("Game")?.GetComponent<GameManager>();

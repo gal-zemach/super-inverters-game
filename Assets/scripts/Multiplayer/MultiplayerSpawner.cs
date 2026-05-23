@@ -23,6 +23,8 @@ namespace Multiplayer
     // because hostColor + IsMasterClient said so.
     public class MultiplayerSpawner : MonoBehaviourPunCallbacks
     {
+        private const int SpawnPointCount = 3;
+
         public const string HostColorProperty = "hostColor";
         public const string MyFrameworkProperty = "myFramework";
 
@@ -32,19 +34,63 @@ namespace Multiplayer
         [Tooltip("Prefab name (under any Resources/ folder) for the WHITE player. Default 'WhitePlayer' resolves to Assets/Resources/WhitePlayer.prefab.")]
         [SerializeField] private string whitePrefabName = "WhitePlayer";
 
-        [Tooltip("World position used when spawning the BLACK player.")]
-        [SerializeField] private Vector2 blackSpawnPosition = new Vector2(-3f, 1f);
+        [Tooltip("World positions for BLACK spawns (one chosen at random per life).")]
+        [SerializeField] private Vector2[] blackSpawnPositions =
+        {
+            new Vector2(-30.7f, 34.89f),
+            new Vector2(-10.7f, 34.89f),
+            new Vector2(-40.7f, 44.89f),
+        };
 
-        [Tooltip("World position used when spawning the WHITE player.")]
-        [SerializeField] private Vector2 whiteSpawnPosition = new Vector2(3f, 1f);
+        [Tooltip("World positions for WHITE spawns (one chosen at random per life).")]
+        [SerializeField] private Vector2[] whiteSpawnPositions =
+        {
+            new Vector2(38.12f, 23.59f),
+            new Vector2(20.12f, 23.59f),
+            new Vector2(30.7f, 34.89f),
+        };
 
         [Tooltip("Only spawn when this scene is active. Prevents the lobby Bootstrap (which is also a copy of this) from spawning a player that PhotonNetwork.LoadLevel would immediately destroy.")]
-        [SerializeField] private string targetSceneName = "level_1-multiplayer";
+        [SerializeField] private string targetSceneName = MultiplayerSceneNames.GameSceneName;
+
+#if UNITY_EDITOR
+        public Vector2[] BlackSpawnPositionsForEditor => blackSpawnPositions;
+        public Vector2[] WhiteSpawnPositionsForEditor => whiteSpawnPositions;
+#endif
 
         private bool spawned;
+        private Vector2? _cachedLocalSpawnPosition;
 
         // Prevents two TrySpawn calls in the same frame (Start + room props).
         private static bool s_spawnInProgress;
+
+        private Coroutine _spawnCoroutine;
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            EnsureSpawnArrayLength(ref blackSpawnPositions, new Vector2(-3f, 1f));
+            EnsureSpawnArrayLength(ref whiteSpawnPositions, new Vector2(3f, 1f));
+        }
+
+        private static void EnsureSpawnArrayLength(ref Vector2[] positions, Vector2 fallback)
+        {
+            if (positions == null || positions.Length == 0)
+            {
+                positions = new Vector2[SpawnPointCount];
+                for (int i = 0; i < SpawnPointCount; i++)
+                    positions[i] = fallback;
+                return;
+            }
+
+            if (positions.Length == SpawnPointCount) return;
+
+            var resized = new Vector2[SpawnPointCount];
+            for (int i = 0; i < SpawnPointCount; i++)
+                resized[i] = i < positions.Length ? positions[i] : fallback;
+            positions = resized;
+        }
+#endif
 
         private void Start()
         {
@@ -53,9 +99,7 @@ namespace Multiplayer
             // Start instead.
             if (PhotonNetwork.InRoom && IsInTargetScene())
             {
-                DestroyStaleLocalNetworkedPlayers();
-                spawned = false;
-                TrySpawn();
+                RequestSpawn(forceRespawn: true);
             }
         }
 
@@ -83,30 +127,39 @@ namespace Multiplayer
             return SceneManager.GetActiveScene().name == targetSceneName;
         }
 
-        // Editor-only visual feedback so you can see where players will spawn
-        // without running the game. Compiled out of player builds automatically.
         private void OnDrawGizmos()
         {
-            DrawSpawnGizmo(blackSpawnPosition, Color.black, "BLACK SPAWN");
-            DrawSpawnGizmo(whiteSpawnPosition, Color.white, "WHITE SPAWN");
+            DrawSpawnGizmos(blackSpawnPositions, Color.black, "BLACK SPAWN");
+            DrawSpawnGizmos(whiteSpawnPositions, Color.white, "WHITE SPAWN");
+        }
+
+        private static void DrawSpawnGizmos(Vector2[] positions, Color fill, string prefix)
+        {
+            if (positions == null) return;
+            for (int i = 0; i < positions.Length; i++)
+                DrawSpawnGizmo(positions[i], fill, $"{prefix} {i + 1}");
         }
 
         private static void DrawSpawnGizmo(Vector2 position, Color fill, string label)
         {
             Vector3 p = new Vector3(position.x, position.y, 0f);
 
-            // Solid colored sphere at the spawn point.
             Gizmos.color = fill;
-            Gizmos.DrawSphere(p, 0.5f);
+            Gizmos.DrawSphere(p, 0.35f);
 
-            // Yellow wire ring around it for contrast against any background.
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(p, 0.6f);
-
-            // Vertical drop line indicating "player falls here onto whatever
-            // is below" — helps when you're aligning to a platform.
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawLine(p, p + Vector3.down * 2f);
+            if (SpawnPlatformPreview.TryGetLandingPoint(position, out Vector2 land, out _))
+            {
+                Vector3 landing = new Vector3(land.x, land.y + 0.3f, 0f);
+                Gizmos.color = Color.green;
+                Gizmos.DrawWireSphere(landing, 0.55f);
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawLine(p, landing);
+            }
+            else
+            {
+                Gizmos.color = Color.red;
+                Gizmos.DrawLine(p, p + Vector3.down * 2f);
+            }
 
 #if UNITY_EDITOR
             UnityEditor.Handles.color = Color.yellow;
@@ -114,12 +167,95 @@ namespace Multiplayer
 #endif
         }
 
-        // Respawn only the local peer after a round death (no full scene reload).
         public void ForceRespawn()
+        {
+            RequestSpawn(forceRespawn: true);
+        }
+
+        private void RequestSpawn(bool forceRespawn)
+        {
+            if (_spawnCoroutine != null)
+                StopCoroutine(_spawnCoroutine);
+            _spawnCoroutine = StartCoroutine(SpawnWhenReady(forceRespawn));
+        }
+
+        private System.Collections.IEnumerator SpawnWhenReady(bool forceRespawn)
         {
             DestroyStaleLocalNetworkedPlayers();
             spawned = false;
-            TrySpawn();
+
+            const float timeout = 3f;
+            float elapsed = 0f;
+            while (FindLocalNetworkedPlayer() != null && elapsed < timeout)
+            {
+                yield return null;
+                elapsed += Time.deltaTime;
+            }
+
+            if (FindLocalNetworkedPlayer() != null)
+            {
+                DestroyStaleLocalNetworkedPlayers();
+                yield return null;
+            }
+
+            TrySpawn(forceRespawn);
+            _spawnCoroutine = null;
+        }
+
+        public void ResetLocalPlayerToSpawnPosition()
+        {
+            var local = FindLocalNetworkedPlayer();
+            if (local == null) return;
+
+            var state = local.GetComponent<PlayerState>();
+            if (state == null) return;
+
+            Vector2 spawnPos = GetCachedOrPickSpawnPosition(state.player_framework, forceNewPick: false);
+
+            var rb = local.GetComponent<Rigidbody2D>();
+            if (rb != null)
+            {
+                rb.velocity = Vector2.zero;
+                rb.position = spawnPos;
+            }
+            else
+            {
+                local.transform.position = spawnPos;
+            }
+
+            EnsureSpawnPlatformPainted(state.player_framework, spawnPos);
+        }
+
+        private Vector2 GetCachedOrPickSpawnPosition(Framework color, bool forceNewPick)
+        {
+            if (!forceNewPick && _cachedLocalSpawnPosition.HasValue)
+                return _cachedLocalSpawnPosition.Value;
+
+            Vector2 picked = PickSpawnPosition(color, forceNewPick: true);
+            _cachedLocalSpawnPosition = picked;
+            return picked;
+        }
+
+        private Vector2 PickSpawnPosition(Framework color, bool forceNewPick)
+        {
+            Vector2[] positions = color == Framework.BLACK ? blackSpawnPositions : whiteSpawnPositions;
+            if (positions == null || positions.Length == 0)
+            {
+                Debug.LogWarning($"[Multiplayer] No spawn positions configured for {color}.");
+                return color == Framework.BLACK ? new Vector2(-3f, 1f) : new Vector2(3f, 1f);
+            }
+
+            if (!forceNewPick && _cachedLocalSpawnPosition.HasValue)
+                return _cachedLocalSpawnPosition.Value;
+
+            int index = Random.Range(0, positions.Length);
+            return positions[index];
+        }
+
+        private static void EnsureSpawnPlatformPainted(Framework playerColor, Vector2 spawnPos)
+        {
+            var gameManager = Object.FindObjectOfType<GameManager>();
+            gameManager?.EnsureSpawnPlatformMatchesPlayer(playerColor, spawnPos);
         }
 
         public bool IsLocalPlayer(string killedPlayerName)
@@ -157,11 +293,14 @@ namespace Multiplayer
             }
         }
 
-        private void TrySpawn()
+        private void TrySpawn(bool forceRespawn = false)
         {
+            if (spawned && FindLocalNetworkedPlayer() == null)
+                spawned = false;
+
             if (spawned || s_spawnInProgress) return;
 
-            if (FindLocalNetworkedPlayer() != null)
+            if (!forceRespawn && FindLocalNetworkedPlayer() != null)
             {
                 spawned = true;
                 return;
@@ -173,43 +312,25 @@ namespace Multiplayer
                 return;
             }
 
-            Framework myColor = PickMyColor(hostColor);
-
-            // Claim it before spawning so the next peer to join sees it.
-            var props = new Hashtable { { MyFrameworkProperty, (int)myColor } };
-            PhotonNetwork.LocalPlayer.SetCustomProperties(props);
+            Framework myColor = MultiplayerColorAssignment.TryGetLocalClaimedColor(out Framework claimed)
+                ? claimed
+                : MultiplayerColorAssignment.ClaimForLocalPlayer();
 
             string prefabName = myColor == Framework.BLACK ? blackPrefabName : whitePrefabName;
-            Vector2 spawnPos = myColor == Framework.BLACK ? blackSpawnPosition : whiteSpawnPosition;
+            Vector2 spawnPos = GetCachedOrPickSpawnPosition(myColor, forceNewPick: true);
 
             s_spawnInProgress = true;
             try
             {
                 PhotonNetwork.Instantiate(prefabName, spawnPos, Quaternion.identity);
                 spawned = true;
+                EnsureSpawnPlatformPainted(myColor, spawnPos);
                 Debug.Log($"[Multiplayer] Spawned local '{prefabName}' as {myColor} at {spawnPos}.");
             }
             finally
             {
                 s_spawnInProgress = false;
             }
-        }
-
-        private static Framework PickMyColor(Framework hostColor)
-        {
-            // Scan other players for a claimed framework. If anyone has claimed,
-            // take whichever color isn't taken — this is what makes rejoin work.
-            foreach (Player player in PhotonNetwork.PlayerList)
-            {
-                if (player.IsLocal) continue;
-                if (player.CustomProperties.TryGetValue(MyFrameworkProperty, out object raw) && raw is int frameworkInt)
-                {
-                    return Opposite((Framework)frameworkInt);
-                }
-            }
-
-            // No one has claimed — fall back to the hostColor heuristic.
-            return PhotonNetwork.IsMasterClient ? hostColor : Opposite(hostColor);
         }
 
         private static bool TryGetHostColor(out Framework framework)
@@ -220,11 +341,6 @@ namespace Multiplayer
             if (!(raw is int frameworkInt)) return false;
             framework = (Framework)frameworkInt;
             return true;
-        }
-
-        private static Framework Opposite(Framework f)
-        {
-            return f == Framework.BLACK ? Framework.WHITE : Framework.BLACK;
         }
     }
 }

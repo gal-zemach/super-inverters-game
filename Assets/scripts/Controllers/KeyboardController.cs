@@ -62,6 +62,9 @@ namespace Controllers
 
         protected override Vector2 update_aim_direction()
         {
+            var mouseAim = GetComponent<MouseAimController>();
+            if (mouseAim != null && mouseAim.enabled)
+                return Vector2.zero;
             return direction;
         }
 

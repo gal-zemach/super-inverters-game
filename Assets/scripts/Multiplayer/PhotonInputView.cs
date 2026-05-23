@@ -22,17 +22,21 @@ namespace Multiplayer
         private KeyboardController _keyboard;
         private PS4Controller _ps4;
         private MultiplayerKeyboardController _multiKb;
+        private MouseAimController _mouseAim;
         private Rigidbody2D _rigidbody;
 
         private Vector2 _localAim;
+        private float _localMoveX;
         private bool _pendingJump, _pendingShoot, _pendingGetDown, _pendingPause;
 
         private Vector2 _remoteAim;
+        private float _remoteMoveX;
         private bool _remoteJumpPending, _remoteShootPending, _remoteGetDownPending, _remotePausePending;
         private Vector3 _remotePosition;
         private bool _hasRemotePosition;
 
         public Vector2 RemoteAim => _remoteAim;
+        public float RemoteMoveX => _remoteMoveX;
 
         public bool ConsumeJump()    { var v = _remoteJumpPending;    _remoteJumpPending    = false; return v; }
         public bool ConsumeShoot()   { var v = _remoteShootPending;   _remoteShootPending   = false; return v; }
@@ -44,6 +48,7 @@ namespace Multiplayer
             _keyboard = GetComponent<KeyboardController>();
             _ps4 = GetComponent<PS4Controller>();
             _multiKb = GetComponent<MultiplayerKeyboardController>();
+            _mouseAim = GetComponent<MouseAimController>();
             _rigidbody = GetComponent<Rigidbody2D>();
         }
 
@@ -58,12 +63,14 @@ namespace Multiplayer
                 if (_multiKb != null) _multiKb.enabled = true;
                 if (_keyboard != null) _keyboard.enabled = false;
                 if (_ps4 != null) _ps4.enabled = false;
+                if (_mouseAim != null) _mouseAim.enabled = true;
             }
             else
             {
                 if (_multiKb != null) _multiKb.enabled = false;
                 if (_keyboard != null) _keyboard.enabled = false;
                 if (_ps4 != null) _ps4.enabled = false;
+                if (_mouseAim != null) _mouseAim.enabled = false;
                 // Remote-only: disable physics simulation entirely so PhotonTransformView
                 // fully owns position. Without this, PlayerManager.tryToJump (triggered by
                 // replicated jump events) adds upward velocity to the body; Kinematic has
@@ -84,39 +91,39 @@ namespace Multiplayer
             if (!photonView.IsMine) return;
 
             Vector2 aim = Vector2.zero;
+            float moveX = 0f;
             bool jump = false, shoot = false, down = false, pause = false;
+
+            if (_mouseAim != null && _mouseAim.enabled)
+            {
+                aim = _mouseAim.aim_direction();
+                shoot |= _mouseAim.shoot();
+            }
 
             if (_keyboard != null && _keyboard.enabled)
             {
-                if (_keyboard.aim_direction() != Vector2.zero) aim = _keyboard.aim_direction();
+                if (aim == Vector2.zero && _keyboard.aim_direction() != Vector2.zero)
+                    aim = _keyboard.aim_direction();
                 jump  |= _keyboard.jump();
                 shoot |= _keyboard.shoot();
                 down  |= _keyboard.getDown();
                 pause |= _keyboard.pauseMenu();
+                moveX = _keyboard.moving_direction().x;
             }
 
             if (_multiKb != null && _multiKb.enabled)
             {
-                if (_multiKb.aim_direction() != Vector2.zero) aim = _multiKb.aim_direction();
                 jump  |= _multiKb.jump();
                 shoot |= _multiKb.shoot();
                 down  |= _multiKb.getDown();
                 pause |= _multiKb.pauseMenu();
+                moveX = _multiKb.moving_direction().x;
             }
 
-            // PS4Controller is intentionally NOT sampled here. Its `defaultAimToMove`
-            // setting forces aim_direction() to a spawn-direction default (e.g. (-1,0)
-            // for WhitePlayer because White spawns at x=3) every frame, which would
-            // permanently override KB's aim and pollute the network stream. PS4 still
-            // drives the LOCAL player via PlayerManager's controller iteration; we just
-            // don't replicate it over the network until the no-default-aim case is
-            // properly handled.
+            // PS4Controller is intentionally NOT sampled here (see prior comment in this file).
 
-            // Snap residual Input.GetAxis values to discrete -1 / 0 / +1.
-            // Without this, axis decay (e.g. 0.05 mid-release) gets serialized and the
-            // remote's Controller.Update normalizes (0.05, 0) to (1, 0) — full magnitude
-            // — causing stuck-running animations and ghost movement on the remote.
-            _localAim = new Vector2(SnapAxis(aim.x), SnapAxis(aim.y));
+            _localAim = aim;
+            _localMoveX = moveX;
 
             if (jump)  _pendingJump     = true;
             if (shoot) _pendingShoot    = true;
@@ -124,20 +131,12 @@ namespace Multiplayer
             if (pause) _pendingPause    = true;
         }
 
-        private const float AxisDeadzone = 0.2f;
-
-        private static float SnapAxis(float v)
-        {
-            if (v >  AxisDeadzone) return  1f;
-            if (v < -AxisDeadzone) return -1f;
-            return 0f;
-        }
-
         public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
         {
             if (stream.IsWriting)
             {
                 stream.SendNext(_localAim);
+                stream.SendNext(_localMoveX);
                 stream.SendNext(_pendingJump);
                 stream.SendNext(_pendingShoot);
                 stream.SendNext(_pendingGetDown);
@@ -148,6 +147,7 @@ namespace Multiplayer
             else
             {
                 _remoteAim = (Vector2)stream.ReceiveNext();
+                _remoteMoveX = (float)stream.ReceiveNext();
                 if ((bool)stream.ReceiveNext()) _remoteJumpPending    = true;
                 if ((bool)stream.ReceiveNext()) _remoteShootPending   = true;
                 if ((bool)stream.ReceiveNext()) _remoteGetDownPending = true;

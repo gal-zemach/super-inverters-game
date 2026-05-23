@@ -8,115 +8,136 @@ using UnityEngine.SceneManagement;
 
 namespace Multiplayer
 {
-    // Slice 1 + 2 of the multiplayer integration plan. See AGENT_CONTEXT.md.
-    //
-    // Drop this on a single GameObject in a scene. On Start it:
-    //   - connects to Photon using PhotonServerSettings
-    //   - on the host (no ?room=XYZ in the URL) creates a fresh room and logs
-    //     the share URL; the room is tagged with hostColor as a custom property
-    //   - on the joiner (?room=XYZ present) joins that room
-    //
-    // MultiplayerSpawner reads hostColor and instantiates the Player prefab
-    // for each peer with the correct Framework.
+    // Connects to Photon from the lobby scene. Host creates a room; guest joins by
+    // code (or ?room= URL / editor override). Colors are assigned automatically.
+    // When the room is full, the master loads the game scene for both peers.
     public class MultiplayerBootstrap : MonoBehaviourPunCallbacks
     {
-        private const string RoomParam = "room";
+        public const string RoomParam = "room";
 
         [Header("Editor-only join override")]
-        [Tooltip("In the Editor, set this on the joiner instance to the room code logged by the host. Leave empty to host. Ignored in WebGL builds (URL ?room= takes over there).")]
+        [Tooltip("Optional: auto-join this room on Play (full URL or room code). Leave empty to use lobby UI.")]
         [SerializeField] private string editorRoomOverride = "";
 
-        [Header("Host color choice")]
-        [Tooltip("Color the host takes when creating the room. The joiner takes the opposite. Ignored on the joiner side.")]
-        [SerializeField] private Framework hostColor = Framework.BLACK;
+        [Header("Room setup")]
+        [Tooltip("Color assigned to the host (master) when they create a room. Joiners always get the opposite.")]
+        [SerializeField] private Framework roomMasterColor = Framework.BLACK;
 
         [Header("Game scene")]
-        [Tooltip("Scene to load via PhotonNetwork.LoadLevel once both peers are in the room. Leave empty to skip loading (single-scene flow).")]
-        [SerializeField] private string gameSceneName = "level_1-multiplayer";
+        [SerializeField] private string gameSceneName = MultiplayerSceneNames.GameSceneName;
 
         private string pendingRoomToJoin;
         private string joinSource;
+        private bool pendingCreateRoom;
+
+        public bool IsConnectedToMaster => PhotonNetwork.IsConnected;
+        public bool IsInRoom => PhotonNetwork.InRoom;
+        public bool HasQueuedJoin => !string.IsNullOrEmpty(pendingRoomToJoin);
 
         private void Start()
         {
-            if (PhotonNetwork.IsConnected)
-            {
-                OnConnectedToMaster();
-                return;
-            }
+            if (!IsLobbyScene()) return;
+
+            PhotonNetwork.AutomaticallySyncScene = true;
+            PhotonNetwork.GameVersion = Application.version;
 
             pendingRoomToJoin = ReadRoomFromUrl(Application.absoluteURL);
             joinSource = string.IsNullOrEmpty(pendingRoomToJoin) ? null : "URL";
 #if UNITY_EDITOR
             if (string.IsNullOrEmpty(pendingRoomToJoin) && !string.IsNullOrEmpty(editorRoomOverride))
             {
-                string trimmed = editorRoomOverride.Trim();
-                // Be tolerant of the user pasting the full share string (e.g.
-                // "(editor) ?room=52F4AD" or a real WebGL URL) rather than
-                // just the room code. Fall back to the raw input otherwise.
-                pendingRoomToJoin = ReadRoomFromUrl(trimmed) ?? trimmed;
+                pendingRoomToJoin = ParseRoomCode(editorRoomOverride);
                 joinSource = "editor override";
                 Debug.Log($"[Multiplayer] Editor override: will join room '{pendingRoomToJoin}'.");
             }
 #endif
-            // Enable on EVERY peer (master + joiner) so that when master
-            // calls PhotonNetwork.LoadLevel, the joiner's listener for the
-            // curScn room property fires and follows along. The default
-            // value in PUN is false, and LoadLevel only auto-enables it on
-            // the caller (master). Without this set on the joiner, the
-            // joiner stays on the lobby scene while the master transitions
-            // to the game scene alone.
-            PhotonNetwork.AutomaticallySyncScene = true;
 
-            PhotonNetwork.GameVersion = Application.version;
+            if (PhotonNetwork.IsConnected)
+            {
+                OnConnectedToMaster();
+                return;
+            }
+
             PhotonNetwork.ConnectUsingSettings();
             Debug.Log("[Multiplayer] Connecting to Photon...");
+        }
+
+        public void CreateRoom()
+        {
+            if (!IsLobbyScene()) return;
+            pendingCreateRoom = true;
+            pendingRoomToJoin = null;
+            TryCreateRoom();
+        }
+
+        public void JoinRoomCode(string input)
+        {
+            if (!IsLobbyScene()) return;
+            string code = ParseRoomCode(input);
+            if (string.IsNullOrEmpty(code))
+            {
+                Debug.LogWarning("[Multiplayer] Join failed: no room code in input.");
+                return;
+            }
+
+            pendingRoomToJoin = code;
+            pendingCreateRoom = false;
+            joinSource = "lobby UI";
+            TryJoinRoom();
+        }
+
+        public static string BuildShareUrl(string roomName)
+        {
+            string url = Application.absoluteURL;
+            if (string.IsNullOrEmpty(url))
+            {
+                return $"(editor) ?{RoomParam}={roomName}";
+            }
+            int q = url.IndexOf('?');
+            string baseUrl = q >= 0 ? url.Substring(0, q) : url;
+            return $"{baseUrl}?{RoomParam}={Uri.EscapeDataString(roomName)}";
+        }
+
+        public static string ParseRoomCode(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return null;
+            string trimmed = input.Trim();
+            string fromUrl = ReadRoomFromUrl(trimmed);
+            return string.IsNullOrEmpty(fromUrl) ? trimmed : fromUrl;
         }
 
         public override void OnConnectedToMaster()
         {
             Debug.Log($"[Multiplayer] Connected to master ({PhotonNetwork.CloudRegion}).");
 
+            if (PhotonNetwork.InRoom) return;
+
             if (!string.IsNullOrEmpty(pendingRoomToJoin))
             {
-                Debug.Log($"[Multiplayer] Joining room '{pendingRoomToJoin}' (from {joinSource}).");
-                PhotonNetwork.JoinRoom(pendingRoomToJoin);
+                TryJoinRoom();
                 return;
             }
 
-            string roomName = GenerateRoomCode();
-            var options = new RoomOptions
+            if (pendingCreateRoom)
             {
-                MaxPlayers = 2,
-                IsVisible = false,
-                IsOpen = true,
-                CustomRoomProperties = new Hashtable
-                {
-                    { MultiplayerSpawner.HostColorProperty, (int)hostColor }
-                },
-                CustomRoomPropertiesForLobby = new[] { MultiplayerSpawner.HostColorProperty }
-            };
-            Debug.Log($"[Multiplayer] Hosting new room '{roomName}' as {hostColor}.");
-            PhotonNetwork.CreateRoom(roomName, options);
+                TryCreateRoom();
+            }
         }
 
         public override void OnJoinedRoom()
         {
             string room = PhotonNetwork.CurrentRoom.Name;
-            int actor = PhotonNetwork.LocalPlayer.ActorNumber;
             int count = PhotonNetwork.CurrentRoom.PlayerCount;
             int max = PhotonNetwork.CurrentRoom.MaxPlayers;
-            Debug.Log($"[Multiplayer] Joined room '{room}' as actor #{actor} ({count}/{max} players).");
+            Debug.Log($"[Multiplayer] Joined room '{room}' ({count}/{max} players).");
+
+            MultiplayerColorAssignment.ClaimForLocalPlayer();
 
             if (PhotonNetwork.IsMasterClient)
             {
-                Debug.Log($"[Multiplayer] Share this URL with a friend: {BuildShareUrl(room)}");
+                Debug.Log($"[Multiplayer] Share: {BuildShareUrl(room)}");
             }
 
-            // If we joined a room that's already full (e.g. master is alone in
-            // the lobby waiting and the joiner just connected), the master may
-            // need to trigger LoadLevel. Joiner case is handled below in
-            // OnPlayerEnteredRoom on the master side.
             TryLoadGameScene();
         }
 
@@ -126,25 +147,47 @@ namespace Multiplayer
             TryLoadGameScene();
         }
 
-        // Master client transitions both peers from the lobby scene to the
-        // game scene once the room is full. Joiner gets the LoadLevel call
-        // auto-synced by PUN. No-op if we're already in the game scene, if
-        // we're not master, if the room isn't full yet, or if no game scene
-        // is configured.
+        private void TryJoinRoom()
+        {
+            if (!PhotonNetwork.IsConnectedAndReady || string.IsNullOrEmpty(pendingRoomToJoin)) return;
+            if (PhotonNetwork.InRoom) return;
+
+            Debug.Log($"[Multiplayer] Joining room '{pendingRoomToJoin}' (from {joinSource}).");
+            PhotonNetwork.JoinRoom(pendingRoomToJoin);
+        }
+
+        private void TryCreateRoom()
+        {
+            if (!PhotonNetwork.IsConnectedAndReady || !pendingCreateRoom) return;
+            if (PhotonNetwork.InRoom) return;
+
+            Framework color = roomMasterColor;
+            string roomName = GenerateRoomCode();
+            var options = new RoomOptions
+            {
+                MaxPlayers = 2,
+                IsVisible = false,
+                IsOpen = true,
+                CustomRoomProperties = new Hashtable
+                {
+                    { MultiplayerSpawner.HostColorProperty, (int)color }
+                },
+                CustomRoomPropertiesForLobby = new[] { MultiplayerSpawner.HostColorProperty }
+            };
+            Debug.Log($"[Multiplayer] Hosting room '{roomName}' as {color}.");
+            PhotonNetwork.CreateRoom(roomName, options);
+        }
+
         private void TryLoadGameScene()
         {
             if (!PhotonNetwork.IsMasterClient) return;
             if (string.IsNullOrEmpty(gameSceneName)) return;
+            if (PhotonNetwork.CurrentRoom == null) return;
             if (PhotonNetwork.CurrentRoom.PlayerCount < PhotonNetwork.CurrentRoom.MaxPlayers) return;
             if (SceneManager.GetActiveScene().name == gameSceneName) return;
 
             Debug.Log($"[Multiplayer] Room full. Loading game scene '{gameSceneName}'.");
             PhotonNetwork.LoadLevel(gameSceneName);
-        }
-
-        public override void OnPlayerLeftRoom(Player otherPlayer)
-        {
-            Debug.Log($"[Multiplayer] Player left: actor #{otherPlayer.ActorNumber}.");
         }
 
         public override void OnJoinRoomFailed(short returnCode, string message)
@@ -162,8 +205,11 @@ namespace Multiplayer
             Debug.LogWarning($"[Multiplayer] Disconnected: {cause}.");
         }
 
-        // Pulls `room` out of the WebGL page URL's query string. Returns null in
-        // the Editor (where Application.absoluteURL is empty) or when missing.
+        private static bool IsLobbyScene()
+        {
+            return SceneManager.GetActiveScene().name == MultiplayerSceneNames.LobbySceneName;
+        }
+
         private static string ReadRoomFromUrl(string absoluteUrl)
         {
             if (string.IsNullOrEmpty(absoluteUrl)) return null;
@@ -184,18 +230,6 @@ namespace Multiplayer
                 return string.IsNullOrEmpty(value) ? null : Uri.UnescapeDataString(value);
             }
             return null;
-        }
-
-        private static string BuildShareUrl(string roomName)
-        {
-            string url = Application.absoluteURL;
-            if (string.IsNullOrEmpty(url))
-            {
-                return $"(editor — no URL) ?{RoomParam}={roomName}";
-            }
-            int q = url.IndexOf('?');
-            string baseUrl = q >= 0 ? url.Substring(0, q) : url;
-            return $"{baseUrl}?{RoomParam}={Uri.EscapeDataString(roomName)}";
         }
 
         private static string GenerateRoomCode()

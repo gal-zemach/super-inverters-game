@@ -303,7 +303,9 @@ GameObject:
   - component: {fileID: -6152906292993125682}
   - component: {fileID: 8316466708782842359}
   - component: {fileID: 6128243635514895138}
+  - component: {fileID: 8847291056382719401}
   - component: {fileID: 4113455482322663690}
+  - component: {fileID: 5113455482322663691}
   m_Layer: 17
   m_Name: BlackPlayer
   m_TagString: player
@@ -369,6 +371,14 @@ MonoBehaviour:
   facingLeft: 0
   isLanding: 0
   isGrounded: 0
+  _directionalIdleClipsOverride:
+  - {fileID: 7400000, guid: 0ac9ca40190e74ab18f4f34e91e0cfe2, type: 2}
+  - {fileID: 7400000, guid: 8a742fe15cca54c5badfa4b756d11377, type: 2}
+  - {fileID: 7400000, guid: ef2df4cb5de0843fcbe5953ea07676c5, type: 2}
+  _directionalIdleShootClipsOverride:
+  - {fileID: 7400000, guid: edd953cce7c4a438083016436050eac8, type: 2}
+  - {fileID: 7400000, guid: 5319c07a37d7d44d184c946b9ef9ed9e, type: 2}
+  - {fileID: 7400000, guid: 9ab82c01df15940c590a312f64470695, type: 2}
 --- !u!114 &114474660210966542
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -390,7 +400,8 @@ MonoBehaviour:
   minimalDoubleJumpVelocity: 17
   RegularGravityScale: 4
   FallingGravityScale: 2
-  turnsBetweenShots: 15
+  turnsBetweenShots: 2
+  burstFireDurationSeconds: 1.5
   shellAngleRange: 10
   recoil: 0.1
   movingDirection: {x: 0, y: 0}
@@ -566,6 +577,24 @@ MonoBehaviour:
   inStartScene: 0
   movingDirection: {x: 0, y: 0}
   aimDirection: {x: 0, y: 0}
+--- !u!114 &8847291056382719401
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7f3c2e18b4d64f0a9e2d1c5b8e70341, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneName: 
+  StartScene: start_scene_2
+  inStartScene: 0
+  movingDirection: {x: 0, y: 0}
+  aimDirection: {x: 0, y: 0}
+  aimDeadzone: 0.15
 --- !u!114 &4113455482322663690
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -583,6 +612,21 @@ MonoBehaviour:
   inStartScene: 0
   movingDirection: {x: 0, y: 0}
   aimDirection: {x: 0, y: 0}
+--- !u!114 &5113455482322663691
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f8e3c2b1a0944321b0c9d8e7f6a5b4c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  indicatorRoot: {fileID: 0}
+  fillImage: {fileID: 0}
+  hideWhenReady: 1
 --- !u!1 &1291081427228662
 GameObject:
   m_ObjectHideFlags: 0
@@ -1096,6 +1140,7 @@ MonoBehaviour:
   Shoot: {fileID: 82591240436111270}
   Impact: {fileID: 82601598178368668}
   Death: {fileID: 82078379256793474}
+  shootVolume: 0.35
 --- !u!1 &1915056108470716
 GameObject:
   m_ObjectHideFlags: 0

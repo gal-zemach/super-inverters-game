@@ -133,7 +133,7 @@ namespace Game {
 
 		private static bool IsMultiplayerLevel()
 		{
-			return Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>() != null;
+			return SceneManager.GetActiveScene().name == Multiplayer.MultiplayerSceneNames.GameSceneName;
 		}
 
 		private void TryStartCountdownSinglePlayer()
@@ -149,8 +149,8 @@ namespace Game {
 			}
 		}
 
-		// Each peer starts the countdown locally once both networked avatars exist in
-		// the scene (no RPC — avoids joiner missing a 2s readiness window).
+		// Master waits until both networked avatars exist, then RPCs all peers to run
+		// the same countdown (fixes host timing out before joiner's scene loads).
 		private IEnumerator MultiplayerCountdownLoop()
 		{
 			if (!countDown || _countDownAnimation == null)
@@ -161,32 +161,89 @@ namespace Game {
 
 			yield return null;
 
-			float elapsed = 0f;
-			while (CountNetworkedPlayersInScene() < MultiplayerPlayerCount && elapsed < WaitForPlayersTimeoutSeconds)
+			// Scene Start() can run before PUN finishes joining the room; never treat
+			// !IsMasterClient as "joiner" until we are actually in a room.
+			float joinRoomElapsed = 0f;
+			while (!PhotonNetwork.InRoom && joinRoomElapsed < WaitForPlayersTimeoutSeconds)
 			{
-				// Input-only lock while waiting for the second peer. Do NOT disable
-				// Rigidbody2D simulation here — spawn Y is above the platform and
-				// simulated=false leaves the avatar hovering in mid-air.
-				if (CountNetworkedPlayersInScene() > 0)
-				{
-					CountdownActive = true;
-				}
-
-				elapsed += Time.deltaTime;
+				joinRoomElapsed += Time.deltaTime;
 				yield return null;
 			}
 
-			if (CountNetworkedPlayersInScene() < MultiplayerPlayerCount)
+			if (!PhotonNetwork.InRoom)
 			{
-				CountdownActive = false;
-				Debug.LogWarning(
-					$"GameManager: Timed out before countdown ({CountNetworkedPlayersInScene()}/{MultiplayerPlayerCount} networked players).");
+				Debug.LogWarning("GameManager: Multiplayer countdown skipped (not in a Photon room).");
 				yield break;
 			}
 
+			if (PhotonNetwork.IsMasterClient)
+				yield return MasterWaitThenBroadcastCountdown();
+			else
+				yield return WaitForSyncedCountdownRpc();
+		}
+
+		private IEnumerator WaitForSyncedCountdownRpc()
+		{
+			float waitElapsed = 0f;
+			CountdownActive = false;
+			while (!s_matchStartCountdownPlayed)
+			{
+				waitElapsed += Time.deltaTime;
+
+				if (IsRoomFull() && waitElapsed > WaitForPlayersTimeoutSeconds)
+				{
+					Debug.LogWarning("GameManager: countdown RPC not received — match start aborted.");
+					yield break;
+				}
+
+				yield return null;
+			}
+		}
+
+		private IEnumerator MasterWaitThenBroadcastCountdown()
+		{
+			CountdownActive = false;
+			while (!IsReadyForMatchCountdown())
+				yield return null;
+
 			if (_countdownRunning || s_matchStartCountdownPlayed) yield break;
+
+			if (photonView != null)
+			{
+				Debug.Log($"GameManager: room full, {CountNetworkedPlayersInScene()} avatars — syncing countdown via RPC.");
+				photonView.RPC(nameof(RPCStartMatchCountdown), RpcTarget.All);
+			}
+			else
+			{
+				Debug.LogWarning("GameManager: No PhotonView — starting countdown locally only.");
+				RPCStartMatchCountdown();
+			}
+		}
+
+		private static bool IsRoomFull()
+		{
+			return PhotonNetwork.InRoom
+			       && PhotonNetwork.CurrentRoom.PlayerCount >= MultiplayerPlayerCount;
+		}
+
+		private static bool IsReadyForMatchCountdown()
+		{
+			return IsRoomFull() && CountNetworkedPlayersInScene() >= MultiplayerPlayerCount;
+		}
+
+		private static void ResetLocalPlayersToSpawn()
+		{
+			var spawner = Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
+			spawner?.ResetLocalPlayerToSpawnPosition();
+		}
+
+		[PunRPC]
+		private void RPCStartMatchCountdown()
+		{
+			if (s_matchStartCountdownPlayed || _countdownRunning) return;
 			s_matchStartCountdownPlayed = true;
-			Debug.Log($"GameManager: {CountNetworkedPlayersInScene()} players in scene — starting countdown.");
+
+			ResetLocalPlayersToSpawn();
 			StartCoroutine(startCountDown());
 		}
 
@@ -320,9 +377,14 @@ namespace Game {
 		private void DoPlayerKilled(string killedPlayerName)
 		{
 			if (CountdownActive) return;
-			if (roundEnded) return;  // This is to solve case where 2 players died one after the other
 
-			roundEnded = true;
+			bool mpRoundDeath = PhotonNetwork.InRoom && IsMultiplayerLevel();
+			if (!mpRoundDeath)
+			{
+				if (roundEnded) return;  // SP: avoid double reload when two players die at once
+				roundEnded = true;
+			}
+
 			_gameState.decreaseScore(killedPlayerName);
 			_gameView.decreaseScore(killedPlayerName);
 //			_gameView.updateScore();
@@ -358,14 +420,6 @@ namespace Game {
 			{
 				spawner.ForceRespawn();
 			}
-
-			StartCoroutine(ReleaseRoundEndedAfterDelay());
-		}
-
-		private IEnumerator ReleaseRoundEndedAfterDelay()
-		{
-			yield return new WaitForSeconds(secondsToNewRound);
-			roundEnded = false;
 		}
 
 		// --- Slice 5 phase 2b: networked platform paint ---------------------
@@ -420,6 +474,62 @@ namespace Game {
 				t = t.parent;
 			}
 			return sb.ToString();
+		}
+
+		private const float SpawnPlatformRayDistance = 12f;
+
+		// Paint the platform under a player spawn so respawns don't fall through
+		// a platform that was shot to the opposite color during the round.
+		public void EnsureSpawnPlatformMatchesPlayer(Framework playerFramework, Vector2 spawnWorldPos)
+		{
+			PlatformManager platform = FindPlatformBelow(spawnWorldPos);
+			if (platform == null)
+			{
+				Debug.LogWarning(
+					$"GameManager: no platform under spawn {spawnWorldPos} for {playerFramework}.");
+				return;
+			}
+
+			var state = platform.GetComponent<PlatformState>();
+			if (state != null && state.platform_framework == playerFramework)
+				return;
+
+			platform.ApplyPaintFromNetwork(playerFramework);
+			if (PhotonNetwork.InRoom && platform.networkId >= 0)
+				BroadcastPaintPlatform(platform.networkId, playerFramework);
+		}
+
+		private static PlatformManager FindPlatformBelow(Vector2 worldPos)
+		{
+			PlatformManager best = null;
+			float bestDist = float.MaxValue;
+
+			foreach (var hit in Physics2D.RaycastAll(worldPos, Vector2.down, SpawnPlatformRayDistance))
+			{
+				var platform = hit.collider.GetComponentInParent<PlatformManager>();
+				if (platform == null) continue;
+				if (hit.distance < bestDist)
+				{
+					bestDist = hit.distance;
+					best = platform;
+				}
+			}
+
+			if (best != null) return best;
+
+			// Spawn point can sit slightly inside the collider; try upward as well.
+			foreach (var hit in Physics2D.RaycastAll(worldPos, Vector2.up, 2f))
+			{
+				var platform = hit.collider.GetComponentInParent<PlatformManager>();
+				if (platform == null) continue;
+				if (hit.distance < bestDist)
+				{
+					bestDist = hit.distance;
+					best = platform;
+				}
+			}
+
+			return best;
 		}
 
 		public void BroadcastPaintPlatform(int platformNetworkId, Framework framework)

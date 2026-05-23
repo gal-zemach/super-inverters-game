@@ -2003,6 +2003,7 @@ GameObject:
   - component: {fileID: 1088979589}
   - component: {fileID: 1088979588}
   - component: {fileID: 1088979593}
+  - component: {fileID: 1088979594}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -2135,6 +2136,23 @@ MonoBehaviour:
   sceneViewId: 1
   InstantiationId: 0
   isRuntimeInstantiated: 0
+--- !u!114 &1088979594
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1088979586}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hideObjectNames:
+  - BG
+  - EndGameMenu
+  - CountDownAnimation
+  - PauseMenu
 --- !u!1 &1128330409
 GameObject:
   m_ObjectHideFlags: 0
@@ -3356,9 +3374,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1561950250}
-  - component: {fileID: 1561950249}
   - component: {fileID: 1561950248}
-  - component: {fileID: 1561950247}
   m_Layer: 0
   m_Name: Bootstrap
   m_TagString: Untagged
@@ -3366,18 +3382,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1561950247
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1561950246}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9e9a1801c8f324d9b81bbe7978a986ed, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &1561950248
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3392,24 +3396,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   blackPrefabName: BlackPlayer
   whitePrefabName: WhitePlayer
-  blackSpawnPosition: {x: -30.7, y: 34.89}
-  whiteSpawnPosition: {x: 38.12, y: 23.59}
+  blackSpawnPositions:
+  - {x: -30.7, y: 31.038792}
+  - {x: -10.7, y: 34.45869}
+  - {x: -40.7, y: 42.87723}
+  whiteSpawnPositions:
+  - {x: 38.12, y: 24.729897}
+  - {x: 20.12, y: 25.900768}
+  - {x: 30.7, y: 34.89}
   targetSceneName: level_1-multiplayer
---- !u!114 &1561950249
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1561950246}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3f74be37c9da34463a15b80cfda3f426, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  editorRoomOverride: 
-  hostColor: 1
-  gameSceneName: level_1-multiplayer
 --- !u!4 &1561950250
 Transform:
   m_ObjectHideFlags: 0
