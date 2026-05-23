@@ -58,10 +58,13 @@ AnimatorController:
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
   - serializedVersion: 5
-    m_Name: not_shooting_2
+    m_Name: not_shooting_1
     m_StateMachine: {fileID: 1107623005622842678}
     m_Mask: {fileID: 0}
-    m_Motions: []
+    m_Motions:
+    - serializedVersion: 2
+      m_State: {fileID: 1102257903758599374}
+      m_Motion: {fileID: 7400000, guid: 63ea6b88451e842af8b5cc4a6e7dfffc, type: 2}
     m_Behaviours: []
     m_BlendingMode: 0
     m_SyncedLayerIndex: -1
@@ -70,7 +73,7 @@ AnimatorController:
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
   - serializedVersion: 5
-    m_Name: shooting_2
+    m_Name: shooting_1
     m_StateMachine: {fileID: 1107187355576194114}
     m_Mask: {fileID: 0}
     m_Motions:
@@ -124,61 +127,7 @@ AnimatorController:
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
   - serializedVersion: 5
-    m_Name: not_shooting_1
-    m_StateMachine: {fileID: 1107071527773578588}
-    m_Mask: {fileID: 0}
-    m_Motions:
-    - serializedVersion: 2
-      m_State: {fileID: 1102804731252153628}
-      m_Motion: {fileID: 7400000, guid: 53711ea4f9af14439b35759ec6cc4b9b, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102951245274568580}
-      m_Motion: {fileID: 7400000, guid: 0fe05a36933264ffbbc25c70471026ee, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102909647615980894}
-      m_Motion: {fileID: 7400000, guid: 15e2f5c0d5d4e4087b4ad4a6ef18cf5b, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102788712217746686}
-      m_Motion: {fileID: 7400000, guid: d19f672ba9f2445a1865ae4b7855cef6, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102257903758599374}
-      m_Motion: {fileID: 7400000, guid: 4dd80d89aeec547e0b6bcd1bbfeb8647, type: 2}
-    m_Behaviours: []
-    m_BlendingMode: 0
-    m_SyncedLayerIndex: 1
-    m_DefaultWeight: 0
-    m_IKPass: 0
-    m_SyncedLayerAffectsTiming: 0
-    m_Controller: {fileID: 9100000}
-  - serializedVersion: 5
-    m_Name: not_shooting_3
-    m_StateMachine: {fileID: 1107220246268842608}
-    m_Mask: {fileID: 0}
-    m_Motions:
-    - serializedVersion: 2
-      m_State: {fileID: 1102257903758599374}
-      m_Motion: {fileID: 7400000, guid: de2166f39a8164ed2a1c869992b3ee9f, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102788712217746686}
-      m_Motion: {fileID: 7400000, guid: 0f7bf9110d6ec4027a479bc6e93dc383, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102909647615980894}
-      m_Motion: {fileID: 7400000, guid: 15e2f5c0d5d4e4087b4ad4a6ef18cf5b, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102951245274568580}
-      m_Motion: {fileID: 7400000, guid: 0fe05a36933264ffbbc25c70471026ee, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102804731252153628}
-      m_Motion: {fileID: 7400000, guid: 53711ea4f9af14439b35759ec6cc4b9b, type: 2}
-    m_Behaviours: []
-    m_BlendingMode: 0
-    m_SyncedLayerIndex: 1
-    m_DefaultWeight: 0
-    m_IKPass: 0
-    m_SyncedLayerAffectsTiming: 0
-    m_Controller: {fileID: 9100000}
-  - serializedVersion: 5
-    m_Name: not_shooting_4
+    m_Name: not_shooting_2
     m_StateMachine: {fileID: 1107265921362691172}
     m_Mask: {fileID: 0}
     m_Motions:
@@ -232,61 +181,7 @@ AnimatorController:
     m_SyncedLayerAffectsTiming: 0
     m_Controller: {fileID: 9100000}
   - serializedVersion: 5
-    m_Name: shooting_1
-    m_StateMachine: {fileID: 1107662887864815058}
-    m_Mask: {fileID: 0}
-    m_Motions:
-    - serializedVersion: 2
-      m_State: {fileID: 1102257903758599374}
-      m_Motion: {fileID: 7400000, guid: 929099e9831e741f89249bdc790cf464, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102788712217746686}
-      m_Motion: {fileID: 7400000, guid: 7c6a2183e90b84d289cbe375bb0fb8ad, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102909647615980894}
-      m_Motion: {fileID: 7400000, guid: 15e2f5c0d5d4e4087b4ad4a6ef18cf5b, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102951245274568580}
-      m_Motion: {fileID: 7400000, guid: 0fe05a36933264ffbbc25c70471026ee, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102804731252153628}
-      m_Motion: {fileID: 7400000, guid: 53711ea4f9af14439b35759ec6cc4b9b, type: 2}
-    m_Behaviours: []
-    m_BlendingMode: 0
-    m_SyncedLayerIndex: 1
-    m_DefaultWeight: 0
-    m_IKPass: 0
-    m_SyncedLayerAffectsTiming: 0
-    m_Controller: {fileID: 9100000}
-  - serializedVersion: 5
-    m_Name: shooting_3
-    m_StateMachine: {fileID: 1107752382618488776}
-    m_Mask: {fileID: 0}
-    m_Motions:
-    - serializedVersion: 2
-      m_State: {fileID: 1102804731252153628}
-      m_Motion: {fileID: 7400000, guid: 53711ea4f9af14439b35759ec6cc4b9b, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102909647615980894}
-      m_Motion: {fileID: 7400000, guid: 15e2f5c0d5d4e4087b4ad4a6ef18cf5b, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102951245274568580}
-      m_Motion: {fileID: 7400000, guid: 0fe05a36933264ffbbc25c70471026ee, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102788712217746686}
-      m_Motion: {fileID: 7400000, guid: 520eb8c3fa4d248d582cb3e2af606307, type: 2}
-    - serializedVersion: 2
-      m_State: {fileID: 1102257903758599374}
-      m_Motion: {fileID: 7400000, guid: 1893dba7c6b12474bb1ef8b4587b2789, type: 2}
-    m_Behaviours: []
-    m_BlendingMode: 0
-    m_SyncedLayerIndex: 1
-    m_DefaultWeight: 0
-    m_IKPass: 0
-    m_SyncedLayerAffectsTiming: 0
-    m_Controller: {fileID: 9100000}
-  - serializedVersion: 5
-    m_Name: shooting_4
+    m_Name: shooting_2
     m_StateMachine: {fileID: 1107327831806178730}
     m_Mask: {fileID: 0}
     m_Motions:
@@ -813,7 +708,7 @@ AnimatorStateMachine:
   m_ObjectHideFlags: 1
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
-  m_Name: shooting_2
+  m_Name: shooting_1
   m_ChildStates: []
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
@@ -867,7 +762,7 @@ AnimatorStateMachine:
   m_ObjectHideFlags: 1
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
-  m_Name: not_shooting_4
+  m_Name: not_shooting_2
   m_ChildStates: []
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
@@ -885,7 +780,7 @@ AnimatorStateMachine:
   m_ObjectHideFlags: 1
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
-  m_Name: shooting_4
+  m_Name: shooting_2
   m_ChildStates: []
   m_ChildStateMachines: []
   m_AnyStateTransitions: []
@@ -939,7 +834,7 @@ AnimatorStateMachine:
   m_ObjectHideFlags: 1
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
-  m_Name: not_shooting_2
+  m_Name: not_shooting_1
   m_ChildStates:
   - serializedVersion: 1
     m_State: {fileID: 1102257903758599374}

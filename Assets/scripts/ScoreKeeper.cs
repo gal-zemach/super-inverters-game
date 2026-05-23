@@ -1,4 +1,4 @@
-﻿
+
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -29,6 +29,14 @@ public class ScoreKeeper : MonoBehaviour
 		
 		DontDestroyOnLoad(gameObject);
 		_scores = new Dictionary<string, int>();
+	}
+
+	private void OnDestroy()
+	{
+		if (_instance == this)
+		{
+			_instance = null;
+		}
 	}
 
 	public bool scoresExist()

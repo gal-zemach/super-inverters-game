@@ -9,7 +9,14 @@ namespace Game{
 
 		[SerializeField] public Framework shot_framework;
 
-		[SerializeField] public float Rotation {
+		// Slice 5 phase 2d: a ghost is a visual-only copy of a remote peer's
+		// shot, spawned via GameManager.RPCSpawnGhostShot. It flies and
+		// self-destructs like a real shot but must NOT paint platforms — paint
+		// is broadcast authoritatively by the shooter (phase 2b paint RPC). The
+		// platform collision handlers check this flag and skip UpdateHit.
+		[HideInInspector] public bool isGhost = false;
+
+		public float Rotation {
 			get {
 				return transform.eulerAngles.z;
 			}
@@ -20,7 +27,7 @@ namespace Game{
 			}
 		}
 
-		[SerializeField]  public Vector2 Position {
+		public Vector2 Position {
 			get {
 				return transform.position;
 			}
@@ -29,7 +36,7 @@ namespace Game{
 			}
 		}
 
-		[SerializeField]  public Vector2 Forward {
+		public Vector2 Forward {
 			get {
 				return Vector2.right.Rotate(Rotation * Mathf.Deg2Rad);
 			}

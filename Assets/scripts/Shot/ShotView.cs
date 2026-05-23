@@ -41,7 +41,7 @@ namespace Game{
 		}
 
 		public void SetVelocity(Vector2 velocity) {
-			body.velocity = velocity;
+			body.linearVelocity = velocity;
 		}
 
 		void OnTriggerEnter2D(Collider2D ob) {
