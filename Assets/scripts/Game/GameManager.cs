@@ -46,6 +46,10 @@ namespace Game {
 
 
 		private bool roundEnded;
+		// Master-authoritative latch: true once the master has declared a winner,
+		// so a near-simultaneous second final kill can't declare a second winner.
+		// Reset on scene load (Awake) so rematch / next round starts fresh.
+		private bool _matchOver;
 		private bool _countdownRunning;
 		private GameObject _endGameMenu;
 		private GameObject _audioSource;
@@ -97,6 +101,7 @@ namespace Game {
 			UpdateLayerNames();	// must happen in Awake otherwise platforms are set to Default layer
 			
 			roundEnded = false;
+			_matchOver = false;
 			_endGameMenu = GameObject.Find(Values.END_GAME_MENU_GAMEOBJ_NAME);
 			if (_endGameMenu != null) _endGameMenu.SetActive(false);
 			
@@ -359,55 +364,92 @@ namespace Game {
 
 			if (PhotonNetwork.InRoom)
 			{
-				// Broadcast so all peers update their local score and trigger
-				// reload together. AllViaServer guarantees ordered delivery
-				// (peers apply the kill in the same sequence). The dying
-				// peer's PlayerManager already gated this call by IsMine, so
-				// this RPC fires exactly once per actual death.
-				photonView.RPC(nameof(RPCPlayerKilled), RpcTarget.AllViaServer, playerName);
+				// Master-authoritative kill handling. The dying peer only REPORTS
+				// the death to the master; the master owns the score, decides
+				// round-respawn vs. game-over, and broadcasts the authoritative
+				// result to everyone. Previously each peer decremented its own
+				// ScoreKeeper and decided game-over independently, so the two
+				// peers could drift and disagree on who lost (one logged
+				// "BlackPlayer Lost", the other "WhitePlayer Lost").
+				photonView.RPC(nameof(RPCReportKillToMaster), RpcTarget.MasterClient, playerName);
 				return;
 			}
 
 			DoPlayerKilled(playerName);
 		}
 
+		// Master only: apply the kill to the authoritative score, then broadcast
+		// the resulting lives count + winner (if any) to every peer so all clients
+		// end the match together for the same winner.
 		[PunRPC]
-		private void RPCPlayerKilled(string killedPlayerName)
+		private void RPCReportKillToMaster(string killedPlayerName)
 		{
-			DoPlayerKilled(killedPlayerName);
+			if (!PhotonNetwork.IsMasterClient) return;
+			if (CountdownActive) return;
+			if (_matchOver) return;  // ignore a near-simultaneous second final kill
+
+			_gameState.decreaseScore(killedPlayerName);
+			int remainingLives = _gameState.getScore(killedPlayerName);
+
+			int winPlayerId = -1;
+			if (remainingLives <= 0 && _endGameMenu != null)
+			{
+				_matchOver = true;
+				winPlayerId = WinnerIdFor(killedPlayerName);
+			}
+
+			photonView.RPC(nameof(RPCApplyKillResult), RpcTarget.All,
+				killedPlayerName, remainingLives, winPlayerId);
 		}
 
+		// Every peer (incl. master): force the local score to the master's
+		// authoritative value, refresh the HUD, then either end the match for the
+		// master-chosen winner or respawn the local player for a round death.
+		[PunRPC]
+		private void RPCApplyKillResult(string killedPlayerName, int remainingLives, int winPlayerId)
+		{
+			_gameState.setScore(killedPlayerName, remainingLives);
+			_gameView.decreaseScore(killedPlayerName); // animated -1 life
+			_gameView.updateScore();                   // hard-correct any drift to the authoritative count
+
+			if (winPlayerId > 0 && _endGameMenu != null)
+			{
+				_matchOver = true;
+				Debug.Log(killedPlayerName + " Lost");
+				endGame(winPlayerId);
+			}
+			else
+			{
+				HandleMultiplayerRoundDeath(killedPlayerName);
+			}
+		}
+
+		// White (id 2) wins when Black runs out of lives; Black (id 1) wins when White does.
+		private static int WinnerIdFor(string killedPlayerName)
+		{
+			if (killedPlayerName == "BlackPlayer") return 2;
+			if (killedPlayerName == "WhitePlayer") return 1;
+			return 0;
+		}
+
+		// Single-player kill path. (Multiplayer goes through the master-authoritative
+		// RPCReportKillToMaster / RPCApplyKillResult pair above.)
 		private void DoPlayerKilled(string killedPlayerName)
 		{
 			if (CountdownActive) return;
 
-			bool mpRoundDeath = PhotonNetwork.InRoom && IsMultiplayerLevel();
-			if (!mpRoundDeath)
-			{
-				if (roundEnded) return;  // SP: avoid double reload when two players die at once
-				roundEnded = true;
-			}
+			if (roundEnded) return;  // avoid double reload when two players die at once
+			roundEnded = true;
 
 			_gameState.decreaseScore(killedPlayerName);
 			_gameView.decreaseScore(killedPlayerName);
-//			_gameView.updateScore();
 
 			// added _endGameMenu null check for testing purposes, so if you don't have the end game menu you can keep playing forever.
 			if (_gameState.hasNoLives(killedPlayerName) && _endGameMenu != null)
 			{
+				int winPlayerId = WinnerIdFor(killedPlayerName);
 				Debug.Log(killedPlayerName + " Lost");
-				int winPlayerId = 0;
-				if (killedPlayerName == "BlackPlayer") {
-					winPlayerId = 2; // white player wins
-				}
-				else if (killedPlayerName == "WhitePlayer") {
-					winPlayerId = 1; // black player wins
-				}
 				endGame(winPlayerId);
-			}
-			else if (PhotonNetwork.InRoom && IsMultiplayerLevel())
-			{
-				HandleMultiplayerRoundDeath(killedPlayerName);
 			}
 			else
 			{
