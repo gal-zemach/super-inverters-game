@@ -4,24 +4,16 @@ using UnityEngine;
 
 namespace Multiplayer
 {
-    // Slice 4: replicates a player's controller inputs across the network and
-    // disables local-input controllers on the remote player so only one peer
-    // drives each player.
-    //
-    // On the local player (photonView.IsMine): samples KeyboardController/
-    // PS4Controller each Update, accumulates pressed-since-last-sync button
-    // events, and writes axis + button state on each OnPhotonSerializeView.
-    //
-    // On the remote player (!photonView.IsMine): KeyboardController and
-    // PS4Controller are disabled in OnPhotonInstantiate; OnPhotonSerializeView
-    // reads the stream and stores values for NetworkController to consume via
-    // the public API below.
+    // Replicates local controller input over the network. Remote peers use
+    // NetworkController; local peer uses MultiplayerKeyboardController, optional
+    // WebGamepadController, and MouseAimController (when no pad aim active).
     [RequireComponent(typeof(PhotonView))]
     public class PhotonInputView : MonoBehaviourPun, IPunObservable, IPunInstantiateMagicCallback
     {
         private KeyboardController _keyboard;
         private PS4Controller _ps4;
         private MultiplayerKeyboardController _multiKb;
+        private WebGamepadController _webGamepad;
         private MouseAimController _mouseAim;
         private Rigidbody2D _rigidbody;
 
@@ -47,6 +39,10 @@ namespace Multiplayer
             _keyboard = GetComponent<KeyboardController>();
             _ps4 = GetComponent<PS4Controller>();
             _multiKb = GetComponent<MultiplayerKeyboardController>();
+            _webGamepad = GetComponent<WebGamepadController>();
+            if (_webGamepad == null)
+                _webGamepad = gameObject.AddComponent<WebGamepadController>();
+            _webGamepad.enabled = false;
             _mouseAim = GetComponent<MouseAimController>();
             _rigidbody = GetComponent<Rigidbody2D>();
         }
@@ -55,13 +51,10 @@ namespace Multiplayer
         {
             if (photonView.IsMine)
             {
-                // Local player in a networked session: swap to the multiplayer key
-                // layout (WASD / Space / Shift). The single-player KB and PS4
-                // controllers are disabled so they don't double-drive movement
-                // alongside MultiplayerKeyboardController.
                 if (_multiKb != null) _multiKb.enabled = true;
                 if (_keyboard != null) _keyboard.enabled = false;
                 if (_ps4 != null) _ps4.enabled = false;
+                if (_webGamepad != null) _webGamepad.enabled = true;
                 if (_mouseAim != null) _mouseAim.enabled = true;
             }
             else
@@ -69,7 +62,7 @@ namespace Multiplayer
                 if (_multiKb != null) _multiKb.enabled = false;
                 if (_keyboard != null) _keyboard.enabled = false;
                 if (_ps4 != null) _ps4.enabled = false;
-                if (_mouseAim != null) _mouseAim.enabled = false;
+                if (_webGamepad != null) _webGamepad.enabled = false;
                 // Remote-only: disable physics simulation entirely so PhotonTransformView
                 // fully owns position. Without this, PlayerManager.tryToJump (triggered by
                 // replicated jump events) adds upward velocity to the body; Kinematic has
@@ -93,7 +86,9 @@ namespace Multiplayer
             float moveX = 0f;
             bool jump = false, shoot = false, down = false;
 
-            if (_mouseAim != null && _mouseAim.enabled)
+            bool padActive = _webGamepad != null && _webGamepad.enabled && _webGamepad.IsActive;
+
+            if (_mouseAim != null && _mouseAim.enabled && !padActive)
             {
                 aim = _mouseAim.aim_direction();
                 shoot |= _mouseAim.shoot();
@@ -114,7 +109,19 @@ namespace Multiplayer
                 jump  |= _multiKb.jump();
                 shoot |= _multiKb.shoot();
                 down  |= _multiKb.getDown();
-                moveX = _multiKb.moving_direction().x;
+                if (_webGamepad == null || !_webGamepad.IsActive)
+                    moveX = _multiKb.moving_direction().x;
+            }
+
+            if (_webGamepad != null && _webGamepad.enabled && _webGamepad.IsActive)
+            {
+                var padAim = _webGamepad.aim_direction();
+                if (padAim != Vector2.zero)
+                    aim = padAim;
+                jump  |= _webGamepad.jump();
+                shoot |= _webGamepad.shoot();
+                down  |= _webGamepad.getDown();
+                moveX = _webGamepad.moving_direction().x;
             }
 
             // PS4Controller is intentionally NOT sampled here (see prior comment in this file).

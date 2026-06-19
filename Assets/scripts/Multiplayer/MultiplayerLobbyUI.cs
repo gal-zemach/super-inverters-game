@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Utils;
 
 namespace Multiplayer
 {
@@ -254,6 +255,7 @@ namespace Multiplayer
             rootPanel = CreateCenteredPanel(canvasGo.transform, "LobbyPanel",
                 new Vector2(640, 340), PanelBg);
             rootPanelRect = rootPanel.GetComponent<RectTransform>();
+            ApplyDesignedLobbyArt(rootPanel);
 
             backButton = CreateStretchButton(rootPanel.transform, "BackButton", "\u2039",
                 new Vector2(0.04f, 0.91f), new Vector2(0.11f, 0.99f),
@@ -361,6 +363,36 @@ namespace Multiplayer
         {
             if (rect == null) return;
             ApplyStretch(rect, new Vector2(minX, minY), new Vector2(maxX, maxY));
+        }
+
+        private static void ApplyDesignedLobbyArt(GameObject rootPanel)
+        {
+            var bg = UiArt.LobbyBackground;
+            if (bg == null) return;
+
+            var image = rootPanel.GetComponent<Image>();
+            if (image == null) return;
+
+            image.sprite = bg;
+            image.type = Image.Type.Simple;
+            image.color = Color.white;
+            image.preserveAspect = false;
+
+            var versus = UiArt.LobbyVersus;
+            if (versus == null) return;
+
+            var badgeGo = new GameObject("VersusBadge", typeof(RectTransform), typeof(Image));
+            badgeGo.transform.SetParent(rootPanel.transform, false);
+            var badgeRect = badgeGo.GetComponent<RectTransform>();
+            badgeRect.anchorMin = new Vector2(0.5f, 0.5f);
+            badgeRect.anchorMax = new Vector2(0.5f, 0.5f);
+            badgeRect.pivot = new Vector2(0.5f, 0.5f);
+            badgeRect.anchoredPosition = new Vector2(0f, 40f);
+            badgeRect.sizeDelta = new Vector2(220f, 80f);
+            var badgeImage = badgeGo.GetComponent<Image>();
+            badgeImage.sprite = versus;
+            badgeImage.preserveAspect = true;
+            badgeImage.color = Color.white;
         }
 
         private static GameObject CreateCenteredPanel(Transform parent, string name, Vector2 size, Color color)

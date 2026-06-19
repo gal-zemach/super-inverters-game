@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Game;
 using UnityEngine;
 using UnityEngine.UI;
+using Utils;
 
 public class EndMenuManager : MonoBehaviour
 {
@@ -20,11 +21,52 @@ public class EndMenuManager : MonoBehaviour
 	{
 		gameManager = GameObject.Find("Game").GetComponent<GameManager>();
 		
-		Transform title = transform.Find("Panel").Find("Title");
+		Transform panel = transform.Find("Panel");
+		Transform title = panel != null ? panel.Find("Title") : null;
 		if (title != null)
 			titleAnimator = title.GetComponent<Animator>();
+
+		ApplyDesignedGameOverArt(panel);
 		
 		selectedButtonIndex = 0;
+	}
+
+	private static void ApplyDesignedGameOverArt(Transform panel)
+	{
+		if (panel == null) return;
+
+		var banner = UiArt.GameOverBanner;
+		if (banner != null)
+		{
+			var bannerGo = new GameObject("DesignedWinBanner", typeof(RectTransform), typeof(Image));
+			bannerGo.transform.SetParent(panel, false);
+			bannerGo.transform.SetAsFirstSibling();
+			var rect = bannerGo.GetComponent<RectTransform>();
+			rect.anchorMin = new Vector2(0.5f, 0.75f);
+			rect.anchorMax = new Vector2(0.5f, 0.75f);
+			rect.pivot = new Vector2(0.5f, 0.5f);
+			rect.sizeDelta = new Vector2(480f, 120f);
+			var image = bannerGo.GetComponent<Image>();
+			image.sprite = banner;
+			image.preserveAspect = true;
+			image.color = Color.white;
+		}
+
+		var exitArt = UiArt.GameOverExit;
+		if (exitArt == null) return;
+
+		foreach (var button in panel.GetComponentsInChildren<Button>(true))
+		{
+			if (!button.name.Contains("MainMenu") && !button.name.Contains("Back")) continue;
+			var image = button.GetComponent<Image>();
+			if (image == null) continue;
+			image.sprite = exitArt;
+			image.type = Image.Type.Simple;
+			image.color = Color.white;
+			image.preserveAspect = true;
+			var label = button.GetComponentInChildren<Text>();
+			if (label != null) label.text = string.Empty;
+		}
 	}
 
 	// Use this for initialization

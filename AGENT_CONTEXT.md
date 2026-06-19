@@ -149,7 +149,23 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
-### 2026-06-19 — Slice 5 end-to-end playtest PASS (user session)
+### 2026-06-19 — Post-Slice 5 roadmap: SP, gamepad, UI art, WebGL build pipeline
+**Agent session goal:** Implement post-Slice 5 roadmap (WebGL ship, re-enable SP, browser gamepad, UI polish).
+
+**WebGL ship:**
+- Added `Assets/scripts/Editor/WebGLBuildPipeline.cs` + `Scripts/build-webgl.sh`, `serve-webgl.sh`, `deploy-itch.sh`, `DEPLOY.md`.
+- **Blocker:** Unity **6000.3.16f1** has no WebGL Build Support module installed (`build target was unsupported`). Copied 6.4 module + 6.4 build both hit *script class layout is incompatible* in batch mode. **User action:** Unity Hub → 6000.3.16f1 → Add modules → **WebGL Build Support**, then run `./Scripts/build-webgl.sh`.
+
+**Single-player:** `MainMenuUI.cs` re-enabled — Single Player → `level_menu`.
+
+**Browser gamepad:** `WebGamepadController.cs` + `PhotonInputView` sampling; Input Manager axes `WebGL_RightStickX/Y`.
+
+**UI polish:** `UiArt.cs` + designed sprites in `Assets/Resources/UI/`; pause menu, lobby background, game-over banner wired in `InGamePauseMenu`, `MultiplayerLobbyUI`, `EndMenuManager`.
+
+**Also:** `.gitignore` adds `.cursor/`; `EditorBuildSettings` empty scene entry removed; `Assets/link.xml` for Photon WebGL.
+
+**Next:** Install WebGL module on 6.3 → build → `./Scripts/serve-webgl.sh` two-tab test → `./Scripts/deploy-itch.sh` → remote friend test.
+
 **Agent session goal:** User re-orientation after hiatus; document extensive 2-peer MP playtest confirming Slice 5 works as expected.
 
 **Playtest results (user, extensive 2-peer session — multiple replays):**

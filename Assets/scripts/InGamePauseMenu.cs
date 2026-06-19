@@ -3,6 +3,7 @@ using Multiplayer;
 using Photon.Pun;
 using UnityEngine;
 using UnityEngine.UI;
+using Utils;
 
 public class InGamePauseMenu : MonoBehaviour
 {
@@ -61,9 +62,24 @@ public class InGamePauseMenu : MonoBehaviour
 		var panel = transform.Find("Panel");
 		if (panel == null) return;
 
+		ApplyDesignedBackground(panel);
 		HideLegacyMenu(panel);
 		CreateMenuButtons(panel);
 		WireEndMenuManager();
+	}
+
+	private static void ApplyDesignedBackground(Transform panel)
+	{
+		var bg = UiArt.PauseBackground;
+		if (bg == null) return;
+
+		var panelImage = panel.GetComponent<Image>();
+		if (panelImage != null)
+		{
+			panelImage.sprite = bg;
+			panelImage.type = Image.Type.Sliced;
+			panelImage.color = Color.white;
+		}
 	}
 
 	private static void HideLegacyMenu(Transform panel)
@@ -102,14 +118,14 @@ public class InGamePauseMenu : MonoBehaviour
 		containerRect.localScale = Vector3.one;
 
 		_resumeButton = CreateMenuButton(container.transform, "Resume", 0f,
-			() => _gameManager?.ToggleInGamePauseMenu());
+			UiArt.PauseResume, () => _gameManager?.ToggleInGamePauseMenu());
 		_copyAddressButton = CreateMenuButton(container.transform, "Copy Room Address", -90f,
-			OnCopyRoomAddressClicked);
+			null, OnCopyRoomAddressClicked);
 		_exitButton = CreateMenuButton(container.transform, "Exit to Main Menu", -180f,
-			OnExitToMainMenuClicked);
+			UiArt.PauseExit, OnExitToMainMenuClicked);
 	}
 
-	private static Button CreateMenuButton(Transform parent, string label, float yOffset, UnityEngine.Events.UnityAction onClick)
+	private static Button CreateMenuButton(Transform parent, string label, float yOffset, Sprite artSprite, UnityEngine.Events.UnityAction onClick)
 	{
 		var buttonGo = new GameObject(label + " button", typeof(RectTransform), typeof(Image), typeof(Button));
 		buttonGo.transform.SetParent(parent, false);
@@ -123,12 +139,22 @@ public class InGamePauseMenu : MonoBehaviour
 		rect.localScale = new Vector3(ButtonScale, ButtonScale, ButtonScale);
 
 		var image = buttonGo.GetComponent<Image>();
-		image.color = ButtonColor;
-		var sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
-		if (sprite != null)
+		if (artSprite != null)
 		{
-			image.sprite = sprite;
-			image.type = Image.Type.Sliced;
+			image.sprite = artSprite;
+			image.type = Image.Type.Simple;
+			image.color = Color.white;
+			image.preserveAspect = true;
+		}
+		else
+		{
+			image.color = ButtonColor;
+			var sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+			if (sprite != null)
+			{
+				image.sprite = sprite;
+				image.type = Image.Type.Sliced;
+			}
 		}
 
 		var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
@@ -141,7 +167,7 @@ public class InGamePauseMenu : MonoBehaviour
 
 		var text = labelGo.GetComponent<Text>();
 		EnsureTextFont(text);
-		text.text = label;
+		text.text = artSprite != null ? string.Empty : label;
 		text.fontSize = 22;
 		text.alignment = TextAnchor.MiddleCenter;
 		text.color = Color.black;

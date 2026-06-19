@@ -69,6 +69,9 @@ GoogleAarExplodeCache.xml
 # Claude Code agent worktrees
 .claude/
 
+# Cursor IDE local files
+.cursor/
+
 # Photon — PhotonServerSettings holds the App ID (a credential).
 # This repo is public; do not track it. Each developer pastes their own App ID
 # into the PUN Setup Wizard locally.
