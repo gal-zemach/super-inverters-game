@@ -13,18 +13,18 @@
 
 - **Repo path:** `/Users/nadav/Documents/GitHub/super-inverters-game/`
 - **The Claude default cwd `/Users/nadav/Documents/Claude/Super Inverters Reloaded/` is EMPTY.** The actual code is in the path above. `cd` there before doing anything.
-- **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`). Shoot burst HUD + SFX tuning committed 2026-05-22.
-- **Engine:** Unity **2020.3.48f1** (LTS). Originally a Unity 2017 project. **Do not "upgrade" the project further** — 2020 is the version that builds and runs. 2017 was tried and failed. Unity Hub shows a red icon next to this version (likely just a "no longer supported by Unity" warning, not a project error — confirm before reacting to it).
+- **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`). **Slice 5 feature-complete in Editor** — extensive 2-peer playtest PASS 2026-06-19 (see update log).
+- **Engine:** Unity **6.3 LTS (`6000.3.16f1`)**. Migrated from 2020.3.48f1 via `Unity-upgrade` branch, merged into `Multiplayer` 2026-05-23. Open from Unity Hub as `super-inverters-game`.
 - **Project is registered in Unity Hub** under the name `super-inverters-game`. The user opens the project from there. Don't `Add project` again.
 - **Latest published web build:** https://nmeidan.itch.io/superinverters — the live WebGL build, "the latest web version."
 - **Build target for multiplayer: WebGL.** Confirmed by user 2026-04-30. Plan all networking choices around WebGL constraints (no raw UDP; use WebSocket transport or WebRTC).
 - **No lobby UI.** Confirmed by user 2026-04-30. The flow is link-share only; do not build a server browser or room list.
 - **Networking stack: Photon PUN 2.** Confirmed 2026-04-30 from a screenshot of the user's Photon dashboard. The app on the dashboard is named **"Super Inverters"**, type **PUN** (= PUN 2; "PUN Classic" is long deprecated), free tier 20 CCU, status Public, **App ID prefix `159a8424-...`** (full value not stored here on purpose; see security note below).
 - **Photon App ID is a credential.** This repo is hosted on public GitHub. Do **not** commit the full App ID in any file (including `PhotonServerSettings.asset`, which the PUN setup wizard creates). When the SDK is installed, add the asset path PUN generates to `.gitignore`, OR keep a stub asset committed and load the real ID from a `.env`-style untracked file. Decide before the first PUN-related commit.
-- **No Photon files in the project yet.** Verified 2026-04-30. The prior agent walked the user through Photon signup + dashboard but never started the Unity install. That's where the user got stuck.
+- **Photon PUN 2 installed** under `Assets/Photon/` (~39 MB, tracked). `PhotonServerSettings.asset` is **gitignored** — paste App ID locally via PUN Setup Wizard.
 - **Goal of this branch:** add **simple multiplayer** to a 2-player local game. See "Multiplayer goal" below.
-- **No CLAUDE.md exists.** This file is the source of truth for project-wide guidance until one is written.
-- **Unity upgrade in progress:** baseline on `Multiplayer` @ `5a3323ef` (2020.3.48f1); active attempt on branch **`Unity-upgrade`** → Unity 6 LTS. **Migration agent:** user switched to a Cursor agent with **Unity Editor MCP** (baseline workspace had no Unity MCP). The "Do not upgrade" bullet below remains the rule for **`Multiplayer` itself** — upgrade work stays on `Unity-upgrade` until merged.
+- **`CLAUDE.md`** points here for multiplayer handoff. This file remains the detailed source of truth.
+- **Next ship milestone:** WebGL two-peer browser test on Unity 6.3 (was blocked on 2020.3 — see WebGL section; retest before assuming it still fails).
 
 ---
 
@@ -51,7 +51,7 @@ super-inverters-game/
 └── .git/  (origin: GaliGuess/Algamedes_Jam2 — confirm with `git remote -v`)
 ```
 
-**Networking packages currently installed:** none. `Packages/manifest.json` has no `com.unity.netcode.*`, `com.unity.transport`, Mirror, or Photon. **Adding multiplayer requires installing a networking stack** (see "Approach" below — discuss with the user before picking).
+**Networking packages currently installed:** **Photon PUN 2** (`Assets/Photon/`). Also ParrelSync (`Packages/com.veriorpies.parrelsync/`) for two-editor testing.
 
 **Branches on origin:** `master`, `Multiplayer` (this one), `backup_branch`, `final_presentationDay`, `moshe_build`, `mouse-controller`, `moving_platforms`, `shell_backup*`, `wired-pause-menu`, `xbox_controller*`, etc.
 
@@ -148,6 +148,21 @@ When you (a future agent) work on this repo:
 ## Update log
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
+
+### 2026-06-19 — Slice 5 end-to-end playtest PASS (user session)
+**Agent session goal:** User re-orientation after hiatus; document extensive 2-peer MP playtest confirming Slice 5 works as expected.
+
+**Playtest results (user, extensive 2-peer session — multiple replays):**
+- **Death + round reload:** both players killable; reload after each death works on both peers.
+- **Game-over sync:** end-game screen appears on **both** clients with matching outcome (extends 2026-05-24 desync-fix PASS).
+- **Phase 2d remote shot ghosts:** on each kill the non-shooter **sees the shooter's projectile** — ghost shots working as expected.
+- **Spawn-fall bug (2026-05-24):** **NOT reproduced** across extensive testing including many round starts — treat as dormant / fixed-by-other-changes until it resurfaces; no code change this session.
+
+**Slice 5 verdict:** **Feature-complete in Editor** for `level_1-multiplayer`. Remaining ship gap = **WebGL two-peer browser test** on Unity 6.3 (2020.3 `abort(163)` may not apply on 6.3 — retest fresh).
+
+**State left behind:** On `Multiplayer` @ `ee70f1a`. Uncommitted working-tree work still present (in-game pause menu, scene/prefab tweaks, deleted `Example.mov`). Git `git diff` may fail on the deleted `.mov` if its blob is missing locally (`8215cfe…` — run `git fetch origin` or commit the deletion to clear). **AGENT_CONTEXT.md updated this session; not yet committed** (user to commit when ready).
+
+**Next agent should:** (1) **WebGL build + two-browser MP test** (top priority for ship); (2) commit pause-menu / scene work when user asks; (3) prune stale `claude/*` worktrees; (4) optionally compress pre-2026-05-23 update-log entries (doc still >300 lines).
 
 ### 2026-05-24 — Desync fix PLAYTESTED ✅ (PASS) + spawn-fall bug diagnosed (NOT fixed)
 **Agent session goal:** Playtest the master-authoritative game-over desync fix; then fix the MP spawn-fall bug.
@@ -378,15 +393,17 @@ When you (a future agent) work on this repo:
 
 ### Current status (where we stand)
 - **Branch `Multiplayer`**, tracks `origin/Multiplayer`. Multiplayer stack: Photon PUN 2, host-authoritative cloud relay, EU dev region, **WebGL ship target**, link-share only (no lobby UI), exactly 2 players, friends-only (no reconnect / anti-cheat / >2 players).
+- **Engine:** Unity **6.3 LTS (`6000.3.16f1`)**.
 - **Slices 1–4 done & playtested:** two peers in a room, color assignment, networked input, transform sync.
-- **Slice 5 (full networked round):**
+- **Slice 5 (full networked round) — FEATURE-COMPLETE IN EDITOR** (user playtest PASS 2026-06-19):
   - 2a lobby→level transition — done & playtested
   - 2b networked platform paint — done & playtested
   - 2c networked death + level reload + life decrement — done & playtested
-  - **2d remote shot ghosts — IMPLEMENTED 2026-05-22, NOT yet playtested.** Uncommitted in the working tree (8 files). Needs Unity recompile + a 2-peer ParrelSync test before commit/push.
-- Once 2d verifies, **Slice 5 is feature-complete** and a multiplayer round plays end-to-end.
+  - 2d remote shot ghosts — done & playtested (remote peer sees shooter's projectile on kills)
+- **Spawn-fall during countdown:** diagnosed 2026-05-24, **not reproduced** in extensive 2026-06-19 testing — parked unless it resurfaces.
+- **Next ship milestone:** WebGL two-peer browser test on 6.3 (see WebGL section — was blocked on 2020.3 only).
 
-### Phase 2d implementation (uncommitted, 8 files, code-only — no prefab/Unity edits needed)
+### Phase 2d implementation (committed; playtested PASS 2026-06-19)
 The owner's shot spawns + paints locally as before; remote peers now see a **visual-only ghost** projectile.
 - `Assets/scripts/Shot/ShotState.cs` — new `[HideInInspector] public bool isGhost`.
 - `Assets/scripts/Shot/ShotManager.cs` `Activate` + `Assets/scripts/Shot/ShotFactory.cs` `MakeObject` — new optional `bool isGhost = false` param (single-player path unchanged).
@@ -412,31 +429,33 @@ Most "current behavior" detail now lives as code comments; this is the orientati
   - `GameState.initializeScores` hardcodes seed names `"BlackPlayer"`/`"WhitePlayer"` (FindGameObjectsWithTag returns empty in the MP scene).
   - `GameManager.CountdownActive` static flag locks late-spawned (PhotonNetwork.Instantiate'd) players during the countdown. `muteMusicForTesting` toggle stops music restarting on every LoadLevel reload.
 
-### WebGL build — BLOCKED (do NOT re-run these experiments)
-WebGL is the ship target but the build aborts at runtime the instant Photon opens its WebSocket. This is the single most important parked problem and exists nowhere in code. Build *succeeds* (~120–140s); the wasm aborts:
+### WebGL build — BLOCKED on 2020.3; RETEST on 6.3 before assuming still broken
+WebGL is the ship target. On **Unity 2020.3.48f1** the build aborts at runtime the instant Photon opens its WebSocket:
 ```
 Invalid function pointer called with signature 'vi'.
 abort(163) … nullFunc_vi … WebSocket.<anonymous> (framework.js) … dynCall_vi … b163 (build2.wasm)
 ```
-JS WebSocket callback dispatches into wasm via `dynCall_vi` → function-table index 163 is null → abort. **Deterministically baked into IL2CPP's wasm for this project + PUN + Unity 2020.3.48f1 + macOS.** None of these moved it — DO NOT retry:
+Working theory: a Unity 2020.3.48 IL2CPP function-pointer-table bug hit by PUN's WebGL WebSocket callback registration. **None of the 2020.3 experiments below moved it — do NOT re-run on 2020.3:**
 - Managed Stripping Level Low (the floor in 2020.3; no Disabled/Minimal option) — same abort.
 - Project-level `link.xml` preserving PUN/Realtime/Chat/WebSocket/Photon3Unity3d — same abort. (Broader preserves → different failure: `build.bc is not valid LLVM bitcode`.)
 - `.NET 4.x` ↔ `.NET Standard 2.0` — identical crash.
 - "Strip Engine Code" off → build fails entirely (`build.bc not valid LLVM bitcode`). Re-enabled.
 - Development Build off (release) — same abort.
 - Lightmap Encoding Normal Quality — same abort.
-- IL2CPP cache wipe (`rm -rf Library/Bee Library/IL2CPPBuildCache Library/PlayerDataCache`) + rebuild — same abort.
-Working theory: a Unity 2020.3.48 IL2CPP function-pointer-table bug hit by PUN's WebGL WebSocket callback registration. **Before spending another session on it:** search Photon forums / Unity issue tracker for `abort(163)` + `nullFunc_vi` + `WebSocket.<anonymous>` on 2020.3 macOS; try the build on Windows/Linux to isolate the macOS toolchain; consider a Unity version bump (a deliberate user decision — do NOT unilaterally upgrade, per the STOP section). Editor + ParrelSync two-peer works fine; only the WebGL build is blocked.
+- IL2CPP cache wipe (`rm -rf Library/Bee Library/IL2CPPBuildCache Library/PlayerDataCache`) + rebuild — same abort on 2020.3.
+**Next step (2026-06-19):** project is now on **Unity 6.3 LTS** — do a **fresh WebGL build + two-browser MP test** before investing more time in 2020.3 workarounds. Editor + ParrelSync two-peer works fine.
 
 ### Known carry-over issues & cleanup backlog
 - **Only `level_1-multiplayer` is networked.** Each new MP level needs a manual PhotonView on its `Game` GameObject until `Game` is made a real prefab instance in MP scenes.
-- WebGL two-peer (real browser build) never validated end-to-end — see WebGL block above.
+- **WebGL two-peer (real browser build) never validated** — top remaining ship task; retest on Unity 6.3 (see WebGL section).
+- **Uncommitted local work:** in-game pause menu (`InGamePauseMenu.cs`, `PauseMenu.prefab`, related `GameManager` RPCs) + scene/prefab tweaks — user-tested MP core loop; commit when user asks.
 - Cosmetic, long-deferred: doublejump sprite pivot mismatch; slight feet hover at jump-land transitions.
-- Repo hygiene: merge-commit noise on `Multiplayer` from merging `claude/slice-5` twice; ~25 stale `claude/*` worktrees/branches (verify none hold unmerged work, then prune); the `claude/slice-5` worktree at `suspicious-noyce-2a5242` is behind (`3606c5cb`) — the main worktree is the source of truth.
+- Repo hygiene: ~25 stale `claude/*` worktrees/branches (verify none hold unmerged work, then prune); some remote-tracking refs may have invalid SHAs locally (`git fsck` warnings) — `git fetch --prune origin` may help.
 - Lingering uncommitted-across-sessions files the user deliberately leaves: `UserSettings/EditorUserSettings.asset`, older `level_2.unity` / `start_scene_2.unity` + lighting bakes, `ProjectSettings/{SceneTemplateSettings.json,TimelineSettings.asset}`.
 
 ### Next agent should
 1. Acknowledge the context-warning convention first (user auto-memory).
-2. Side aim fixed 2026-05-22; commit mouse-aim / animator / controller bundle when user asks.
-4. Phase 2d remote shot ghosts still need 2-peer playtest + commit if not done yet.
-5. Then: **real WebGL two-peer build test** (ship target) — forum/issue-tracker search for `abort(163)` / `nullFunc_vi` first; do not unilaterally upgrade Unity.
+2. **WebGL build + two-browser MP test** on Unity 6.3 (top priority for ship).
+3. Commit pause-menu / scene work when user asks.
+4. Prune stale `claude/*` worktrees if user wants repo cleanup.
+5. Optionally compress pre-2026-05-23 update-log entries (doc still >300 lines).
