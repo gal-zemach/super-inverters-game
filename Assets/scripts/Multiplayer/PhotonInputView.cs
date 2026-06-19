@@ -27,11 +27,11 @@ namespace Multiplayer
 
         private Vector2 _localAim;
         private float _localMoveX;
-        private bool _pendingJump, _pendingShoot, _pendingGetDown, _pendingPause;
+        private bool _pendingJump, _pendingShoot, _pendingGetDown;
 
         private Vector2 _remoteAim;
         private float _remoteMoveX;
-        private bool _remoteJumpPending, _remoteShootPending, _remoteGetDownPending, _remotePausePending;
+        private bool _remoteJumpPending, _remoteShootPending, _remoteGetDownPending;
         private Vector3 _remotePosition;
         private bool _hasRemotePosition;
 
@@ -41,7 +41,6 @@ namespace Multiplayer
         public bool ConsumeJump()    { var v = _remoteJumpPending;    _remoteJumpPending    = false; return v; }
         public bool ConsumeShoot()   { var v = _remoteShootPending;   _remoteShootPending   = false; return v; }
         public bool ConsumeGetDown() { var v = _remoteGetDownPending; _remoteGetDownPending = false; return v; }
-        public bool ConsumePause()   { var v = _remotePausePending;   _remotePausePending   = false; return v; }
 
         private void Awake()
         {
@@ -92,7 +91,7 @@ namespace Multiplayer
 
             Vector2 aim = Vector2.zero;
             float moveX = 0f;
-            bool jump = false, shoot = false, down = false, pause = false;
+            bool jump = false, shoot = false, down = false;
 
             if (_mouseAim != null && _mouseAim.enabled)
             {
@@ -107,7 +106,6 @@ namespace Multiplayer
                 jump  |= _keyboard.jump();
                 shoot |= _keyboard.shoot();
                 down  |= _keyboard.getDown();
-                pause |= _keyboard.pauseMenu();
                 moveX = _keyboard.moving_direction().x;
             }
 
@@ -116,7 +114,6 @@ namespace Multiplayer
                 jump  |= _multiKb.jump();
                 shoot |= _multiKb.shoot();
                 down  |= _multiKb.getDown();
-                pause |= _multiKb.pauseMenu();
                 moveX = _multiKb.moving_direction().x;
             }
 
@@ -128,7 +125,6 @@ namespace Multiplayer
             if (jump)  _pendingJump     = true;
             if (shoot) _pendingShoot    = true;
             if (down)  _pendingGetDown  = true;
-            if (pause) _pendingPause    = true;
         }
 
         public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
@@ -140,9 +136,8 @@ namespace Multiplayer
                 stream.SendNext(_pendingJump);
                 stream.SendNext(_pendingShoot);
                 stream.SendNext(_pendingGetDown);
-                stream.SendNext(_pendingPause);
                 stream.SendNext(transform.position);
-                _pendingJump = _pendingShoot = _pendingGetDown = _pendingPause = false;
+                _pendingJump = _pendingShoot = _pendingGetDown = false;
             }
             else
             {
@@ -151,7 +146,6 @@ namespace Multiplayer
                 if ((bool)stream.ReceiveNext()) _remoteJumpPending    = true;
                 if ((bool)stream.ReceiveNext()) _remoteShootPending   = true;
                 if ((bool)stream.ReceiveNext()) _remoteGetDownPending = true;
-                if ((bool)stream.ReceiveNext()) _remotePausePending   = true;
                 _remotePosition = (Vector3)stream.ReceiveNext();
                 _hasRemotePosition = true;
             }

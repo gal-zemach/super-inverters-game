@@ -16,7 +16,7 @@ namespace Controllers
         private PhotonInputView _inputView;
         private PhotonView _photonView;
 
-        private bool _isJump, _isShoot, _isGetDown, _isPause;
+        private bool _isJump, _isShoot, _isGetDown;
 
         protected override void Start()
         {
@@ -29,7 +29,7 @@ namespace Controllers
         {
             if (_photonView != null && _photonView.IsMine)
             {
-                _isJump = _isShoot = _isGetDown = _isPause = false;
+                _isJump = _isShoot = _isGetDown = false;
                 base.Update();
                 return;
             }
@@ -39,7 +39,6 @@ namespace Controllers
                 _isJump    = _inputView.ConsumeJump();
                 _isShoot   = _inputView.ConsumeShoot();
                 _isGetDown = _inputView.ConsumeGetDown();
-                _isPause   = _inputView.ConsumePause();
             }
 
             base.Update();
@@ -60,6 +59,6 @@ namespace Controllers
         public override bool jump()      => _isJump;
         public override bool shoot()     => _isShoot;
         public override bool getDown()   => _isGetDown;
-        public override bool pauseMenu() => _isPause;
+        public override bool pauseMenu() => false;
     }
 }

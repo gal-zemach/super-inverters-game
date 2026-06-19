@@ -1192,6 +1192,7 @@ MonoBehaviour:
   Death: {fileID: 82854585395000492}
   shootVolume: 0.22
   impactVolume: 0.2
+  deathVolume: 0.4
 --- !u!1 &1646181762229240
 GameObject:
   m_ObjectHideFlags: 0

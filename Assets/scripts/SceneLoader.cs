@@ -12,11 +12,17 @@ namespace Game {
 		private static int MAX_LEVEL_IDX = 5;
 
 		public void LoadScene(int index) {
-			// EndGame/Pause "Back to Main Menu" buttons use build index 1, which is
-			// not main_menu in current build settings — route through networked exit.
+			// End-game Leave Level uses build index 1 — both peers exit together.
 			if (index == 1)
 			{
-				ExitToMainMenu();
+				var gameManager = GameObject.Find("Game")?.GetComponent<GameManager>();
+				if (gameManager != null)
+				{
+					gameManager.RequestNetworkedExitToMainMenu();
+					return;
+				}
+
+				SceneManager.LoadScene(MainMenuSceneName);
 				return;
 			}
 			SceneManager.LoadScene(index);
@@ -24,10 +30,15 @@ namespace Game {
 
 		public void ExitToMainMenu()
 		{
+			ExitToMainMenuLocal();
+		}
+
+		public void ExitToMainMenuLocal()
+		{
 			var gameManager = GameObject.Find("Game")?.GetComponent<GameManager>();
 			if (gameManager != null)
 			{
-				gameManager.RequestNetworkedExitToMainMenu();
+				gameManager.RequestLocalExitToMainMenu();
 				return;
 			}
 

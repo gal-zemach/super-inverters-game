@@ -158,19 +158,24 @@ namespace Game{
 
 		private void Update()
 		{
+			foreach (var controller in controllers)
+			{
+				if (!controller.pauseMenu()) continue;
+
+				var pv = GetComponentInChildren<PhotonView>();
+				bool isLocal = pv == null || pv.IsMine;
+				if (!isLocal) return;
+
+				if (_gameManager != null)
+					_gameManager.ToggleInGamePauseMenu();
+				return;
+			}
+
 			// Per-player disable (single-player path via _gameState.players)
 			// OR global countdown flag (works for multiplayer where players
 			// are PhotonNetwork.Instantiate'd and aren't in _gameState.players
 			// at GameState.Awake time).
 			if (controlsDisabled || GameManager.CountdownActive) return;
-
-			foreach (var controller in controllers)
-			{
-				if (controller.pauseMenu())
-				{
-					_gameManager.TogglePauseMenu();
-				}
-			}
 			
 			updateGrounded();
 		}
@@ -268,6 +273,12 @@ namespace Game{
 		public void DisableControls(bool status)
 		{
 			controlsDisabled = status;
+		}
+
+		public void ResetShootState()
+		{
+			ResetBurstState();
+			_nextShootTime = 0f;
 		}
 
 
@@ -556,6 +567,10 @@ namespace Game{
 			if (other.CompareTag(Values.BOUNDRIES_TAG))
 			{
 				if (invincible) return;
+				// MP match start: player may briefly fall through a mis-layered
+				// spawn platform before countdown reposition/freeze. Don't treat
+				// that as a real death — GO enables normal bounds kills again.
+				if (GameManager.IsMatchStartProtectionActive) return;
 				if (EnableSFX) _sfx.PlayDeath();
 
 				// In a Photon room, only the local-owner peer reports the

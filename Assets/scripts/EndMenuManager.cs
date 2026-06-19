@@ -60,7 +60,7 @@ public class EndMenuManager : MonoBehaviour
 		if (Input.GetButtonDown(button))
 		{
 			buttons[selectedButtonIndex].onClick.Invoke();
-			if (Time.timeScale == 0) // only happens in pause menu
+			if (GameManager.LocalPauseActive)
 			{
 				gameManager.RestartMusic();
 				gameManager.TogglePauseMenu();

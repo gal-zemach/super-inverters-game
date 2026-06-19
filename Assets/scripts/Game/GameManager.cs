@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Multiplayer;
 using Photon.Pun;
+using Photon.Realtime;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -51,6 +52,7 @@ namespace Game {
 		// Reset on scene load (Awake) so rematch / next round starts fresh.
 		private bool _matchOver;
 		private bool _countdownRunning;
+		private Coroutine _rejoinCountdownCoroutine;
 		private GameObject _endGameMenu;
 		private GameObject _audioSource;
 		private GameObject _countDownAnimation;
@@ -116,6 +118,10 @@ namespace Game {
 			{
 				_countDownAnimation.SetActive(false);
 			}
+
+			// PUN default (-1) does not dispatch in LateUpdate when timeScale==0,
+			// so pause/resume RPCs never reach the still-paused peer.
+			PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate = 1f;
 		}
 
 		private void Start()
@@ -239,10 +245,75 @@ namespace Game {
 			return IsRoomFull() && CountNetworkedPlayersInScene() >= MultiplayerPlayerCount;
 		}
 
-		private static void ResetLocalPlayersToSpawn()
+		private static void ResetLocalPlayersToSpawn(bool forceNewPick = false)
 		{
-			var spawner = Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
-			spawner?.ResetLocalPlayerToSpawnPosition();
+			var spawner = UnityEngine.Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
+			spawner?.ResetLocalPlayerToSpawnPosition(forceNewPick);
+		}
+
+		public override void OnPlayerEnteredRoom(Player newPlayer)
+		{
+			if (!IsMultiplayerLevel() || !PhotonNetwork.IsMasterClient) return;
+			if (!s_matchStartCountdownPlayed) return;
+
+			// Host may be paused while sharing the room link — resume immediately so
+			// RPCs dispatch and the rejoin countdown can sync with the joiner.
+			ForceDismissInGamePauseMenu();
+
+			if (_rejoinCountdownCoroutine != null)
+				StopCoroutine(_rejoinCountdownCoroutine);
+			_rejoinCountdownCoroutine = StartCoroutine(MasterWaitThenBroadcastRejoinCountdown());
+		}
+
+		private IEnumerator MasterWaitThenBroadcastRejoinCountdown()
+		{
+			if (!countDown || _countDownAnimation == null)
+			{
+				_rejoinCountdownCoroutine = null;
+				yield break;
+			}
+
+			PlatformMotionEpoch = -1;
+			float waitElapsed = 0f;
+			while (!IsReadyForMatchCountdown())
+			{
+				waitElapsed += Time.unscaledDeltaTime;
+				if (waitElapsed > WaitForPlayersTimeoutSeconds)
+				{
+					Debug.LogWarning("GameManager: rejoin countdown aborted — second player not ready in time.");
+					_rejoinCountdownCoroutine = null;
+					yield break;
+				}
+				yield return null;
+			}
+
+			if (_countdownRunning)
+			{
+				_rejoinCountdownCoroutine = null;
+				yield break;
+			}
+
+			Debug.Log("GameManager: player rejoined — syncing respawn + countdown.");
+			ForceDismissInGamePauseMenu();
+			if (photonView != null)
+				photonView.RPC(nameof(RPCStartRejoinCountdown), RpcTarget.AllViaServer);
+			else
+				RPCStartRejoinCountdown();
+
+			_rejoinCountdownCoroutine = null;
+		}
+
+		[PunRPC]
+		private void RPCStartRejoinCountdown()
+		{
+			if (_countdownRunning) return;
+
+			s_matchStartCountdownPlayed = true;
+			ForceDismissInGamePauseMenu();
+			PlatformMotionEpoch = -1;
+			CountdownActive = false;
+			ResetLocalPlayersToSpawn(forceNewPick: true);
+			StartCoroutine(startCountDown());
 		}
 
 		[PunRPC]
@@ -284,6 +355,41 @@ namespace Game {
 					rb.simulated = true;
 				}
 			}
+		}
+
+		private static void ForEachLocalPlayer(System.Action<GameObject> action)
+		{
+			foreach (var go in GameObject.FindGameObjectsWithTag(Values.PLAYER_TAG))
+			{
+				var pv = go.GetComponentInChildren<PhotonView>();
+				if (PhotonNetwork.InRoom && pv != null && !pv.IsMine) continue;
+				action(go);
+			}
+		}
+
+		private static void SetLocalPlayerGameplayEnabled(bool enabled)
+		{
+			ForEachLocalPlayer(go =>
+			{
+				var pm = go.GetComponent<PlayerManager>();
+				if (pm != null)
+				{
+					pm.DisableControls(!enabled);
+					if (!enabled) pm.ResetShootState();
+				}
+
+				var rb = go.GetComponent<Rigidbody2D>();
+				if (rb == null) return;
+				if (!enabled)
+				{
+					rb.linearVelocity = Vector2.zero;
+					rb.simulated = false;
+				}
+				else
+				{
+					rb.simulated = true;
+				}
+			});
 		}
 
 		public void MockPlatformsAtBeat(int beat_num) {
@@ -460,7 +566,7 @@ namespace Game {
 
 		private void HandleMultiplayerRoundDeath(string killedPlayerName)
 		{
-			var spawner = Object.FindObjectOfType<Multiplayer.MultiplayerSpawner>();
+			var spawner = FindObjectOfType<Multiplayer.MultiplayerSpawner>();
 			if (spawner != null && spawner.IsLocalPlayer(killedPlayerName))
 			{
 				spawner.ForceRespawn();
@@ -525,7 +631,7 @@ namespace Game {
 
 		// Paint the platform under a player spawn so respawns don't fall through
 		// a platform that was shot to the opposite color during the round.
-		public void EnsureSpawnPlatformMatchesPlayer(Framework playerFramework, Vector2 spawnWorldPos)
+		public void EnsureSpawnPlatformMatchesPlayer(Framework playerFramework, Vector2 spawnWorldPos, bool forceRepaint = false)
 		{
 			PlatformManager platform = FindPlatformBelow(spawnWorldPos);
 			if (platform == null)
@@ -536,13 +642,17 @@ namespace Game {
 			}
 
 			var state = platform.GetComponent<PlatformState>();
-			if (state != null && state.platform_framework == playerFramework)
+			if (!forceRepaint && state != null && state.platform_framework == playerFramework)
 				return;
 
 			platform.ApplyPaintFromNetwork(playerFramework);
 			if (PhotonNetwork.InRoom && platform.networkId >= 0)
 				BroadcastPaintPlatform(platform.networkId, playerFramework);
 		}
+
+		/// <summary>True from MP scene load until GO — blocks out-of-bounds kills during spawn/countdown.</summary>
+		public static bool IsMatchStartProtectionActive =>
+			PhotonNetwork.InRoom && (CountdownActive || PlatformMotionEpoch < 0);
 
 		private static PlatformManager FindPlatformBelow(Vector2 worldPos)
 		{
@@ -645,8 +755,18 @@ namespace Game {
 			LoadMainMenuScene();
 		}
 
+		public void RequestLocalExitToMainMenu()
+		{
+			PerformExitToMainMenuCleanup();
+		}
+
 		[PunRPC]
 		private void RPCExitToMainMenu()
+		{
+			PerformExitToMainMenuCleanup();
+		}
+
+		private void PerformExitToMainMenuCleanup()
 		{
 			DismissEndGamePresentation();
 			RestoreGameplayTimeScale();
@@ -654,7 +774,7 @@ namespace Game {
 			s_matchStartCountdownPlayed = false;
 			roundEnded = false;
 
-			var spawner = Object.FindObjectOfType<MultiplayerSpawner>();
+			var spawner = FindObjectOfType<MultiplayerSpawner>();
 			spawner?.ResetSessionSpawnState();
 			MultiplayerColorAssignment.ClearLocalColorClaim();
 
@@ -673,8 +793,16 @@ namespace Game {
 
 		private void RestoreGameplayTimeScale()
 		{
+			ForceDismissInGamePauseMenu();
+		}
+
+		private void ForceDismissInGamePauseMenu()
+		{
+			LocalPauseActive = false;
 			Time.timeScale = 1f;
-			if (_pause_menu != null && _pause_menu.activeSelf)
+			SetLocalPlayerGameplayEnabled(true);
+			SetBackgroundMusicPaused(false);
+			if (_pause_menu != null)
 				_pause_menu.SetActive(false);
 		}
 
@@ -727,6 +855,8 @@ namespace Game {
 		// I moved all the action
 		private void endGame(int winPlayerId)
 		{
+			CountdownActive = false;
+			SetLocalPlayerGameplayEnabled(true);
 			IEnumerator couroutine = waitThenEndGame(winPlayerId);
 			StartCoroutine(couroutine);
 			Destroy(_gameState.scoreKeeper.gameObject); // so the scores don't stay for the next level
@@ -735,6 +865,8 @@ namespace Game {
 		IEnumerator waitThenEndGame(int winPlayerId)
 		{
 			yield return new WaitForSeconds(secondsToNewRound);
+			Time.timeScale = 1f;
+			SetLocalPlayerGameplayEnabled(false);
 			_endGameMenu.SetActive(true);
 			EndMenuManager menuManager = _endGameMenu.GetComponent<EndMenuManager>();
 			menuManager.setAnimation(winPlayerId);
@@ -748,6 +880,8 @@ namespace Game {
 		// so the per-player disable was a no-op there. Reset to false at
 		// scene load (Awake — see below) so it doesn't leak across reloads.
 		public static bool CountdownActive { get; private set; }
+
+		public static bool LocalPauseActive { get; private set; }
 
 		// Photon room time when moving platforms may advance. -1 = frozen (MP wait / countdown).
 		// Both peers derive platform pose from (PhotonNetwork.Time - epoch) so join latency
@@ -811,38 +945,90 @@ namespace Game {
 
 		private void disablePlayerControls(bool status)
 		{
-			foreach (var player in _gameState.players)
+			SetLocalPlayerGameplayEnabled(!status);
+		}
+
+		private bool IsInGamePauseMenuOpen =>
+			_pause_menu != null && _pause_menu.activeSelf;
+
+		public void ToggleInGamePauseMenu()
+		{
+			SetInGamePauseMenuOpen(!IsInGamePauseMenuOpen);
+		}
+
+		private void SetInGamePauseMenuOpen(bool open)
+		{
+			if (PhotonNetwork.InRoom && photonView != null)
 			{
-				player.GetComponent<PlayerManager>().DisableControls(status);
+				if (open)
+				{
+					photonView.RPC(nameof(RPCSetInGamePauseMenuOpen), RpcTarget.AllViaServer, true);
+				}
+				else
+				{
+					// Restore timeScale locally so the outgoing RPC can dispatch,
+					// then sync close to every peer via the server.
+					ApplyInGamePauseMenuOpen(false);
+					photonView.RPC(nameof(RPCSetInGamePauseMenuOpen), RpcTarget.AllViaServer, false);
+				}
+				return;
 			}
+
+			ApplyInGamePauseMenuOpen(open);
+		}
+
+		[PunRPC]
+		private void RPCSetInGamePauseMenuOpen(bool open)
+		{
+			ApplyInGamePauseMenuOpen(open);
+		}
+
+		private void ApplyInGamePauseMenuOpen(bool open)
+		{
+			if (open)
+				OpenInGamePauseMenu();
+			else
+				CloseInGamePauseMenu();
+		}
+
+		public void OpenInGamePauseMenu()
+		{
+			if (_pause_menu == null) return;
+			if (IsInGamePauseMenuOpen) return;
+
+			LocalPauseActive = true;
+			SetBackgroundMusicPaused(true);
+			_pause_menu.SetActive(true);
+			Time.timeScale = 0f;
+
+			var pauseUi = _pause_menu.GetComponent<InGamePauseMenu>();
+			if (pauseUi == null)
+				pauseUi = _pause_menu.AddComponent<InGamePauseMenu>();
+			pauseUi.Refresh();
+		}
+
+		public void CloseInGamePauseMenu()
+		{
+			if (_pause_menu == null || !IsInGamePauseMenuOpen) return;
+
+			ForceDismissInGamePauseMenu();
 		}
 
 		public void TogglePauseMenu()
 		{
-			Debug.Log("GAMEMANAGER:: TogglePauseMenu");
-			if (_pause_menu == null) {
-				return;
-			}
-			
-			AudioSource audioSource = _audioSource.GetComponent<AudioSource>(); // used to also stop bg music
-			
-			// not the optimal way but for the sake of readability
-			if (_pause_menu.activeSelf)
-			{
-				audioSource.Play();
-				_pause_menu.SetActive(false);
-				Time.timeScale = 1.0f;
-				
-			}
-			else
-			{
-				audioSource.Pause();
-				_pause_menu.SetActive(true);
-				Time.timeScale = 0f;
-				
-			}
+			ToggleInGamePauseMenu();
+		}
 
-			Debug.Log("GAMEMANAGER:: TimeScale: " + Time.timeScale);
+		private void SetBackgroundMusicPaused(bool paused)
+		{
+			if (_audioSource == null) return;
+			var audioSource = _audioSource.GetComponent<AudioSource>();
+			if (audioSource == null) return;
+
+			if (paused)
+				audioSource.Pause();
+			else
+				audioSource.Play();
 		}
 
 		public void RestartMusic()

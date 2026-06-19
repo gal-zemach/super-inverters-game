@@ -223,11 +223,15 @@ namespace Multiplayer
                 yield return null;
             }
 
+            // Wait for PlatformManager.Start/Init (order 0) before spawn paint.
+            yield return null;
+            yield return new WaitForEndOfFrame();
+
             TrySpawn(forceRespawn);
             _spawnCoroutine = null;
         }
 
-        public void ResetLocalPlayerToSpawnPosition()
+        public void ResetLocalPlayerToSpawnPosition(bool forceNewPick = false)
         {
             var local = FindLocalNetworkedPlayer();
             if (local == null) return;
@@ -235,7 +239,9 @@ namespace Multiplayer
             var state = local.GetComponent<PlayerState>();
             if (state == null) return;
 
-            Vector2 spawnAnchor = GetCachedOrPickSpawnPosition(state.player_framework, forceNewPick: false);
+            EnsureAllSpawnPlatformsPainted(state.player_framework, forceRepaint: true);
+
+            Vector2 spawnAnchor = GetCachedOrPickSpawnPosition(state.player_framework, forceNewPick);
             Vector2 standPos = ResolveStandPosition(spawnAnchor);
 
             var rb = local.GetComponent<Rigidbody2D>();
@@ -243,13 +249,71 @@ namespace Multiplayer
             {
                 rb.linearVelocity = Vector2.zero;
                 rb.position = standPos;
+                rb.simulated = false;
             }
             else
             {
                 local.transform.position = standPos;
             }
 
-            EnsureSpawnPlatformPainted(state.player_framework, spawnAnchor);
+            EnsureSpawnPlatformPainted(state.player_framework, spawnAnchor, forceRepaint: true);
+        }
+
+        private void EnsureAllSpawnPlatformsPainted(Framework color, bool forceRepaint = false)
+        {
+            Vector2[] positions = color == Framework.BLACK ? blackSpawnPositions : whiteSpawnPositions;
+            if (positions == null) return;
+
+            foreach (Vector2 anchor in positions)
+                EnsureSpawnPlatformPainted(color, anchor, forceRepaint);
+        }
+
+        private static bool ShouldFreezeForMatchStart() =>
+            PhotonNetwork.InRoom && (GameManager.CountdownActive || GameManager.PlatformMotionEpoch < 0);
+
+        private static void ApplySpawnPhysicsState(GameObject player, bool freeze)
+        {
+            if (player == null) return;
+
+            var rb = player.GetComponent<Rigidbody2D>();
+            if (rb == null) return;
+
+            rb.linearVelocity = Vector2.zero;
+            rb.simulated = !freeze;
+        }
+
+        private static void FreezePlayerRigidbody(GameObject player) =>
+            ApplySpawnPhysicsState(player, ShouldFreezeForMatchStart());
+
+        private static void EnsureSpawnPlatformPainted(Framework playerColor, Vector2 spawnPos, bool forceRepaint = false)
+        {
+            var gameManager = Object.FindObjectOfType<GameManager>();
+            gameManager?.EnsureSpawnPlatformMatchesPlayer(playerColor, spawnPos, forceRepaint);
+        }
+
+        private System.Collections.IEnumerator SecureSpawnAfterPhysics(GameObject player, Framework color, Vector2 spawnAnchor)
+        {
+            // Colliders/platforms can settle a frame after Instantiate.
+            yield return null;
+            yield return new WaitForFixedUpdate();
+
+            EnsureAllSpawnPlatformsPainted(color, forceRepaint: true);
+
+            if (player == null) yield break;
+
+            Vector2 standPos = ResolveStandPosition(spawnAnchor);
+            var rb = player.GetComponent<Rigidbody2D>();
+            bool freeze = ShouldFreezeForMatchStart();
+            if (rb != null)
+            {
+                rb.linearVelocity = Vector2.zero;
+                rb.position = standPos;
+                rb.simulated = !freeze;
+            }
+            else
+            {
+                player.transform.position = standPos;
+            }
         }
 
         private static Vector2 ResolveStandPosition(Vector2 spawnAnchor)
@@ -282,12 +346,6 @@ namespace Multiplayer
 
             int index = Random.Range(0, positions.Length);
             return positions[index];
-        }
-
-        private static void EnsureSpawnPlatformPainted(Framework playerColor, Vector2 spawnPos)
-        {
-            var gameManager = Object.FindObjectOfType<GameManager>();
-            gameManager?.EnsureSpawnPlatformMatchesPlayer(playerColor, spawnPos);
         }
 
         public bool IsLocalPlayer(string killedPlayerName)
@@ -355,14 +413,18 @@ namespace Multiplayer
 
             string prefabName = myColor == Framework.BLACK ? blackPrefabName : whitePrefabName;
             Vector2 spawnAnchor = GetCachedOrPickSpawnPosition(myColor, forceNewPick: true);
+
+            EnsureAllSpawnPlatformsPainted(myColor, forceRepaint: true);
             Vector2 standPos = ResolveStandPosition(spawnAnchor);
 
             s_spawnInProgress = true;
             try
             {
-                PhotonNetwork.Instantiate(prefabName, standPos, Quaternion.identity);
+                GameObject player = PhotonNetwork.Instantiate(prefabName, standPos, Quaternion.identity);
                 spawned = true;
-                EnsureSpawnPlatformPainted(myColor, spawnAnchor);
+                EnsureSpawnPlatformPainted(myColor, spawnAnchor, forceRepaint: true);
+                FreezePlayerRigidbody(player);
+                StartCoroutine(SecureSpawnAfterPhysics(player, myColor, spawnAnchor));
                 Debug.Log($"[Multiplayer] Spawned local '{prefabName}' as {myColor} at {standPos} (anchor {spawnAnchor}).");
             }
             finally
