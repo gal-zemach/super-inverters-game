@@ -3,18 +3,24 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-UNITY_63="/Applications/Unity/Hub/Editor/6000.3.16f1/Unity.app/Contents/MacOS/Unity"
+VERSION_FILE="${ROOT}/ProjectSettings/ProjectVersion.txt"
+PROJECT_VERSION="$(grep -E '^m_EditorVersion:' "${VERSION_FILE}" | awk '{print $2}')"
+UNITY_DEFAULT="/Applications/Unity/Hub/Editor/${PROJECT_VERSION}/Unity.app/Contents/MacOS/Unity"
 UNITY_64="/Applications/Unity/Hub/Editor/6000.4.4f1/Unity.app/Contents/MacOS/Unity"
+
 if [[ -n "${UNITY_PATH:-}" ]]; then
   UNITY="${UNITY_PATH}"
-elif [[ -d "/Applications/Unity/Hub/Editor/6000.3.16f1/PlaybackEngines/WebGLSupport" ]]; then
-  UNITY="${UNITY_63}"
+elif [[ -x "${UNITY_DEFAULT}" ]]; then
+  UNITY="${UNITY_DEFAULT}"
 elif [[ -x "${UNITY_64}" ]]; then
-  echo "Note: WebGL module not found on 6000.3.16f1 — using 6000.4.4f1 for this build."
+  echo "Note: ${PROJECT_VERSION} not installed — falling back to 6000.4.4f1."
   UNITY="${UNITY_64}"
 else
-  UNITY="${UNITY_63}"
+  echo "Error: no Unity editor found for project version ${PROJECT_VERSION}." >&2
+  exit 1
 fi
+
+echo "Using Unity ${PROJECT_VERSION} → ${UNITY}"
 OUT="${ROOT}/Web build"
 LOG="${ROOT}/Logs/webgl-build.log"
 
@@ -25,6 +31,7 @@ echo "Log: ${LOG}"
 
 "${UNITY}" \
   -batchmode -nographics -quit \
+  -buildTarget WebGL \
   -projectPath "${ROOT}" \
   -executeMethod EditorTools.WebGLBuildPipeline.BuildWebGL \
   -logFile "${LOG}"

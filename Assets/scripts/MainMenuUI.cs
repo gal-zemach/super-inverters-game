@@ -35,6 +35,24 @@ namespace Game
 
 			button.interactable = true;
 			button.transition = Selectable.Transition.ColorTint;
+
+			var colors = button.colors;
+			colors.normalColor = Color.white;
+			colors.highlightedColor = new Color(0.68f, 0.68f, 0.68f, 1f);
+			colors.pressedColor = new Color(0.45f, 0.45f, 0.45f, 1f);
+			colors.selectedColor = colors.highlightedColor;
+			colors.disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.5f);
+			colors.colorMultiplier = 1f;
+			button.colors = colors;
+
+			var image = button.GetComponent<Image>();
+			if (image != null)
+				image.color = Color.white;
+
+			var label = button.GetComponentInChildren<Text>();
+			if (label != null)
+				label.color = new Color(0.96f, 0.96f, 0.96f, 1f);
+
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(() => sceneLoader.LoadSceneByName(sceneName));
 		}

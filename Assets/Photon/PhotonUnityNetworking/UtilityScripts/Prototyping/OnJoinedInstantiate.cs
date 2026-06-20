@@ -56,6 +56,7 @@ namespace Photon.Pun.UtilityScripts
         #endregion
 
         // Record of spawned objects, used for Despawn All
+        [System.NonSerialized]
         public Stack<GameObject> SpawnedObjects = new Stack<GameObject>();
         protected int spawnedAsActorId;
 

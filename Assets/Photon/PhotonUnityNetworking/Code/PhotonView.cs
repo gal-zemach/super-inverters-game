@@ -701,7 +701,7 @@ namespace Photon.Pun
         #region Callback Interfaces
 
 
-        private struct CallbackTargetChange
+        private class CallbackTargetChange
         {
             public IPhotonViewCallback obj;
             public Type type;

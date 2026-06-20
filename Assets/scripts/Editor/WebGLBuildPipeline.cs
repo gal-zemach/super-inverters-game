@@ -10,6 +10,13 @@ namespace EditorTools
 
 		public static void BuildWebGL()
 		{
+			if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.WebGL, BuildTarget.WebGL))
+			{
+				Debug.LogError("WebGL build aborted: failed to switch active build target to WebGL.");
+				EditorApplication.Exit(1);
+				return;
+			}
+
 			var scenes = EditorBuildSettings.scenes;
 			var enabled = new System.Collections.Generic.List<string>();
 			foreach (var scene in scenes)

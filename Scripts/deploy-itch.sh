@@ -14,10 +14,15 @@ if [[ ! -f "${BUILD}/index.html" ]]; then
 fi
 
 if ! command -v butler >/dev/null 2>&1; then
-  echo "Install itch butler: https://itch.io/docs/butler/"
-  exit 1
+  BUTLER="${ROOT}/.tools/butler"
+  if [[ ! -x "${BUTLER}" ]]; then
+    echo "Install itch butler: https://itch.io/docs/butler/"
+    exit 1
+  fi
+else
+  BUTLER="butler"
 fi
 
 echo "Pushing ${BUILD} → ${USER}/${GAME}:${CHANNEL}"
-butler push "${BUILD}" "${USER}/${GAME}:${CHANNEL}"
+"${BUTLER}" push "${BUILD}" "${USER}/${GAME}:${CHANNEL}"
 echo "Live at: https://${USER}.itch.io/${GAME}"
