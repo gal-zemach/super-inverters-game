@@ -13,6 +13,7 @@ TagManager:
   - wall
   - shell
   - grenade
+  - powerup
   layers:
   - Default
   - TransparentFX
@@ -26,7 +27,7 @@ TagManager:
   - shots_black
   - shots_white
   - shots
-  - 
+  - powerup
   - platforms_black
   - platforms_grey
   - platforms_white

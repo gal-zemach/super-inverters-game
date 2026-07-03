@@ -2,17 +2,17 @@ using UnityEngine;
 
 namespace Game.Powerups
 {
-    // TEMPORARY (Slice G2): editor-only debug helper.
-    //   * press the grant key (H) to give the local player a grenade (real pickups arrive
-    //     in Slice G3);
+    // TEMPORARY (Slice G2/G3): editor-only debug helper.
+    //   * press the spawn key (H) to drop a real grenade pickup from the sky, so the actual
+    //     collection path can be exercised on demand without waiting for the spawn interval;
     //   * on-screen sliders tune the local player's GrenadeAimController charge feel live.
-    // Self-bootstraps and survives scene loads. Removed once the G3 pickup path works.
+    // Self-bootstraps and survives scene loads. Removed in Slice G6 polish.
     //
     // Slider edits apply to the spawned player INSTANCE (lost when Play stops); once the
     // feel is dialled in, bake the numbers into the Black/White player prefabs out of Play.
     public class GrenadeDebugSpawner : MonoBehaviour
     {
-        [SerializeField] private KeyCode grantKey = KeyCode.H;
+        [SerializeField] private KeyCode spawnKey = KeyCode.H;
 
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -21,26 +21,24 @@ namespace Game.Powerups
             var go = new GameObject("GrenadeDebugGranter (AUTO)");
             DontDestroyOnLoad(go);
             go.AddComponent<GrenadeDebugSpawner>();
-            Debug.Log("[GrenadeDebug] granter bootstrapped. Press 'H' to grant a grenade, " +
-                      "hold 'G' to charge and release to throw.");
+            Debug.Log("[GrenadeDebug] bootstrapped. Press 'H' to drop a grenade pickup from " +
+                      "the sky, walk into it to collect, hold 'G' to charge and release to throw.");
         }
 #endif
 
         private void Update()
         {
-            if (!Input.GetKeyDown(grantKey)) return;
+            if (!Input.GetKeyDown(spawnKey)) return;
 
-            GameObject player = FindLocalPlayer();
-            GrenadeInventory inv = player != null ? player.GetComponent<GrenadeInventory>() : null;
-            if (inv == null)
+            PowerupSpawner spawner = Object.FindFirstObjectByType<PowerupSpawner>();
+            if (spawner == null)
             {
-                Debug.LogWarning("[GrenadeDebug] no local GrenadeInventory found - are you " +
-                                 "in the level and spawned in?");
+                Debug.LogWarning("[GrenadeDebug] no PowerupSpawner in scene - are you in " +
+                                 "level_1-multiplayer? (it lives on the Bootstrap object).");
                 return;
             }
-            Debug.Log(inv.Grant()
-                ? "[GrenadeDebug] granted a grenade to the local player."
-                : "[GrenadeDebug] local player already holds a grenade (capacity 1).");
+            spawner.DebugSpawnNow();
+            Debug.Log("[GrenadeDebug] dropped a grenade pickup from the sky.");
         }
 
         private static GameObject FindLocalPlayer()
@@ -59,16 +57,19 @@ namespace Game.Powerups
             GameObject player = FindLocalPlayer();
             GrenadeInventory inv = player != null ? player.GetComponent<GrenadeInventory>() : null;
             GrenadeAimController aim = player != null ? player.GetComponent<GrenadeAimController>() : null;
+            PowerupSpawner spawner = Object.FindFirstObjectByType<PowerupSpawner>();
 
-            GUILayout.BeginArea(new Rect(10, 10, 340, 160), GUI.skin.box);
-            GUILayout.Label($"Grenade debug — '{grantKey}' grant, hold 'G' to throw");
+            GUILayout.BeginArea(new Rect(10, 10, 340, 130), GUI.skin.box);
+            GUILayout.Label($"Grenade debug — '{spawnKey}' drop pickup, hold 'G' to throw");
             GUILayout.Label(inv != null ? $"HasGrenade: {inv.HasGrenade}" : "HasGrenade: (no local player)");
+            if (spawner != null)
+            {
+                // Applies to the next dropped pickup — press '{spawnKey}' again to see it.
+                GUILayout.Label($"Pickup fall speed: {spawner.FallSpeed:F2} u/s");
+                spawner.FallSpeed = GUILayout.HorizontalSlider(spawner.FallSpeed, 0.5f, 15f);
+            }
             if (aim != null)
             {
-                GUILayout.Label($"Max force: {aim.ThrowForceMax:F1}");
-                aim.ThrowForceMax = GUILayout.HorizontalSlider(aim.ThrowForceMax, 10f, 80f);
-                GUILayout.Label($"Min force: {aim.ThrowForceMin:F1}");
-                aim.ThrowForceMin = GUILayout.HorizontalSlider(aim.ThrowForceMin, 0f, 30f);
                 GUILayout.Label($"Charge ramp / sec: {aim.ChargeRampPerSecond:F2}");
                 aim.ChargeRampPerSecond = GUILayout.HorizontalSlider(aim.ChargeRampPerSecond, 0.3f, 4f);
             }
