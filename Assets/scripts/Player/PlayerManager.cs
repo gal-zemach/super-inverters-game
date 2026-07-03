@@ -270,6 +270,8 @@ namespace Game{
 		}
 
 
+		public bool ControlsDisabled => controlsDisabled;
+
 		public void DisableControls(bool status)
 		{
 			controlsDisabled = status;
