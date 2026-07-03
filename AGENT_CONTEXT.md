@@ -149,6 +149,18 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-03 (session 2) — Grenade power-up: branch + tech spec (NO implementation yet)
+**Agent session goal:** Plan a new feature — falling grenade power-up (collect 1, hold-to-charge throw, physics bounce with decay, fuse-timer detonation paints all platforms in a radius the thrower's color). MP-only v1.
+
+**What exists now:**
+- Branch **`feature/paint-grenade`** off `Multiplayer`, re-pointed on top of the bug-fix commit `85a1f2e2` so the feature builds on the fixed kill/paint flow.
+- **`GRENADE_FEATURE_SPEC.md`** at repo root — the full tech spec (architecture, RPC design, physics, tunables, scene wiring, gating rules, implementation order, 2-peer test plan). An implementing agent should read AGENT_CONTEXT.md then that spec and start at its §8 step 1. User-confirmed decisions baked in: hold-to-charge clamped ramp (no ping-pong), fuse-timer detonation, MP-only, grenade lost on death, user supplies the grenade sprite later (placeholder until then).
+- The spec was largely authored in a parallel session and adopted/amended in this one (preconditions resolved, ramp mode + death rule corrected) — treat the committed version as canonical.
+
+**Uncommitted, deliberately left for the user to decide:** MCP-dependency churn — `Packages/manifest.json` + lock (re-adds `com.coplaydev.unity-mcp`, adds ProBuilder + VFX Graph from the MCP window's Deps tab), `ProjectSettings/InputManager.asset` (Unity 6 auto-added Debug axes), `VFXManager.asset`, `ShaderGraphSettings.asset`, `ProjectSettings/Packages/`. Harmless but should be committed as separate editor/deps churn if kept.
+
+**Next agent should:** implement `GRENADE_FEATURE_SPEC.md` §8 in order on `feature/paint-grenade`; each step must compile + be testable; finish with the §9 playtest matrix.
+
 ### 2026-07-03 — Code review: 4 bug fixes (kill-race softlock, pause-exit strand, RestartMusic NRE, hasNoLives)
 **Agent session goal:** Verify repo path/state after user's return, then review MP code for bugs and fix findings.
 
