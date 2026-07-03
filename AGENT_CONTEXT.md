@@ -149,6 +149,30 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-04 — Grenade power-up: Slices G1 + G2 shipped (projectile + hold-to-charge throw)
+
+**Shipped (committed on `feature/paint-grenade`; user pushes):**
+- `b1fcad1b` **G1** — `GrenadeProjectile` (dynamic physics, per-bounce velocity damping, fuse, bounds despawn, detonation radius paint via `PlatformManager.ApplyPaintFromNetwork` — local path only). New `grenade` tag + layer (slot 8) + Physics2D matrix row (collides Default/floor/walls + `platforms_black/grey/white` + `floor`; ignores players/shots/shells/itself). `Grenade Material.physicsMaterial2D` (bounciness 0.55). Placeholder `Grenade.prefab`.
+- `7c8a723d` **chore** — pre-existing Unity MCP + ProBuilder/VFX Graph package churn, committed separately so slice diffs stay feature-only.
+- `5c1f925b` **G2** — player-side throw: `GrenadeInventory` (capacity 1), `GrenadeThrower` (spawns from player, coloured by `player_framework`; local only — ghost RPC is G5), `GrenadeAimController` (hold-to-charge, force lerps min..max over time, gated on `IsMine && HasGrenade && !CountdownActive && !LocalPauseActive && !ControlsDisabled`, aim from `PlayerManager.shootingDirection`). Added `PlayerManager.ControlsDisabled` getter. Both player prefabs (`Assets/Resources/{Black,White}Player.prefab`) wired.
+
+**Decisions / deviations (baked in):**
+- Aim UI = a **widening white `LineRenderer` beam** toward the mouse (charge = length), NOT the spec §3.5 dotted trajectory-arc. User's call.
+- `throwForceMax` = **47.8** (playtest), min 8, chargeRamp 1.2.
+- Grenade prefab is a **placeholder** (magenta, oversized ×4 for visibility) — user supplies the real sprite; resize + real sprite in G6 polish.
+
+**Temporary debug tooling — REMOVE in G3:** `Assets/scripts/Powerups/GrenadeDebugSpawner.cs` is a self-bootstrapping `DontDestroyOnLoad` AUTO object — press **H** to grant the local player a grenade, hold **G** to throw, on-screen sliders tune force/ramp live. Exists only until real pickups land in G3.
+
+**Process gotchas learned this session (do not repeat):**
+- **Exit Play before editing/recompiling scripts.** A mid-play domain reload corrupts `PlatformManager` runtime indices → `ArgumentOutOfRangeException` spam at `PlatformManager.cs:220` (NOT a real bug — it's this).
+- **One editor only during asset/script writes** (ParrelSync clone shares `Library/` symlink → asset-DB corruption). Open the clone only for 2-peer tests, close before edits.
+- **Test in `level_1-multiplayer`, not `main_menu`** (menu has no arena/camera). Ungated debug key + baked platforms means a host-solo Play is enough for local slices.
+- Unity MCP (stdio) `execute_code`: needs `action:"execute"`, no `using` directives (fully-qualify types), must `return` a value.
+
+**Parked (separate from grenade):** MP **platform-color desync** — a player appears to stand on a wrong-coloured platform on one peer; likely a missing/unbuffered paint sync. Needs repro. Task flagged.
+
+**Next agent should:** implement **G3** (spec §8 / §3.1 / §3.2) — falling `GrenadePickup` + `PowerupSpawner` running locally (no RPCs yet), kinematic descent, player-trigger collection granting one grenade, despawn below bounds, single-slot rule; **remove the debug spawner**. Then G4 (networked pickup + master-authoritative claim), G5 (grenade ghost + synced detonation paint), G6 (lifecycle gating + HUD + real sprite/size + strip all debug).
+
 ### 2026-07-03 (session 2) — Grenade power-up: branch + tech spec (NO implementation yet)
 **Agent session goal:** Plan a new feature — falling grenade power-up (collect 1, hold-to-charge throw, physics bounce with decay, fuse-timer detonation paints all platforms in a radius the thrower's color). MP-only v1.
 
