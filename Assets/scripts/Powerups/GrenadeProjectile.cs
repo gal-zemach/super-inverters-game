@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Photon.Pun;
 using UnityEngine;
 
 namespace Game.Powerups
@@ -44,6 +45,7 @@ namespace Game.Powerups
         private float _fuseRemaining;
         private bool _detonated;
         private int _platformLayersMask;
+        private GameManager _gameManager;
 
         private void Awake()
         {
@@ -104,14 +106,22 @@ namespace Game.Powerups
                 var pm = hit.GetComponentInParent<PlatformManager>();
                 if (pm == null || painted.Contains(pm)) continue;
                 painted.Add(pm);
-                // Local paint only in G1: sets colour + collision layer + releases
-                // mismatched carried players, and does NOT re-broadcast.
+                // Local apply: colour + collision layer + release of mismatched carried
+                // players. ApplyPaintFromNetwork deliberately does NOT re-broadcast, so we
+                // broadcast each platform explicitly below — same shape as the shot-hit and
+                // spawn-repaint paths. THIS is what makes the remote peer's platforms flip.
                 pm.ApplyPaintFromNetwork(_framework);
-                // TODO(G5): also GameManager.BroadcastPaintPlatform(pm.networkId, _framework)
-                //           so the remote peer's platforms flip too.
+                if (PhotonNetwork.InRoom && pm.networkId >= 0)
+                {
+                    if (_gameManager == null) _gameManager = FindFirstObjectByType<GameManager>();
+                    if (_gameManager != null)
+                        _gameManager.BroadcastPaintPlatform(pm.networkId, _framework);
+                }
             }
 
-            // TODO(G5): RPCDetonateGrenade to snap the remote ghost to `pos`.
+            // TODO(G5): RPCSpawnGhostGrenade + RPCDetonateGrenade so the REMOTE peer also
+            //           sees the grenade fly and explode at `pos` (cosmetic — platform colours
+            //           already sync via the per-platform broadcast above).
             // TODO(G6): spawn explosion VFX/SFX (detach or delay-destroy per spec 3.7a).
             Destroy(gameObject);
         }
