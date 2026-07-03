@@ -491,8 +491,17 @@ namespace Game {
 		private void RPCReportKillToMaster(string killedPlayerName)
 		{
 			if (!PhotonNetwork.IsMasterClient) return;
-			if (CountdownActive) return;
 			if (_matchOver) return;  // ignore a near-simultaneous second final kill
+			if (CountdownActive)
+			{
+				// Countdown end is per-peer coroutine timing, so the victim's
+				// protection can lift a few frames before the master's. A death
+				// reported in that window must still respawn the victim — they
+				// are out of bounds and only respawn when a result comes back.
+				// Discount the score, but don't drop the respawn.
+				photonView.RPC(nameof(RPCRespawnWithoutScore), RpcTarget.All, killedPlayerName);
+				return;
+			}
 
 			_gameState.decreaseScore(killedPlayerName);
 			int remainingLives = _gameState.getScore(killedPlayerName);
@@ -528,6 +537,15 @@ namespace Game {
 			{
 				HandleMultiplayerRoundDeath(killedPlayerName);
 			}
+		}
+
+		// A kill the master discounted (arrived during its countdown): no score
+		// change, no HUD animation — just get the out-of-bounds victim back on
+		// a platform so the match can't softlock.
+		[PunRPC]
+		private void RPCRespawnWithoutScore(string killedPlayerName)
+		{
+			HandleMultiplayerRoundDeath(killedPlayerName);
 		}
 
 		// White (id 2) wins when Black runs out of lives; Black (id 1) wins when White does.
@@ -791,6 +809,16 @@ namespace Game {
 			LoadMainMenuScene();
 		}
 
+		// The synced pause menu sets timeScale=0 on BOTH peers, but a local exit
+		// (pause menu → Exit to Main Menu) only cleans up the leaving peer. Without
+		// this, the remaining peer stays frozen on the pause menu with no way to
+		// know the opponent is gone.
+		public override void OnPlayerLeftRoom(Player otherPlayer)
+		{
+			if (!IsMultiplayerLevel()) return;
+			ForceDismissInGamePauseMenu();
+		}
+
 		private void RestoreGameplayTimeScale()
 		{
 			ForceDismissInGamePauseMenu();
@@ -1033,7 +1061,12 @@ namespace Game {
 
 		public void RestartMusic()
 		{
+			// _audioSource is destroyed by waitThenEndGame at game over (and may be
+			// disabled by muteMusicForTesting) — this can be reached from the end
+			// menu's gamepad path afterwards.
+			if (_audioSource == null) return;
 			AudioSource audioSource = _audioSource.GetComponent<AudioSource>();
+			if (audioSource == null) return;
 			audioSource.Stop();
 			audioSource.Play();
 		}

@@ -149,6 +149,23 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-03 — Code review: 4 bug fixes (kill-race softlock, pause-exit strand, RestartMusic NRE, hasNoLives)
+**Agent session goal:** Verify repo path/state after user's return, then review MP code for bugs and fix findings.
+
+**Project-state finding (already resolved by user):** On 2026-06-20 the project had been opened with **6000.3.16f1** (rewrote ProjectVersion.txt, mono crash 2 min later — the exact scenario the 2026-06-19 entry warns about). User reopened with 6000.4.4f1 and committed the pending working tree as `08387490`.
+
+**Code fixes this session (code-only, compile NOT yet verified in Editor, NOT playtested):**
+1. **Kill-race softlock** — `GameManager.RPCReportKillToMaster` used to `return` silently when the master's `CountdownActive` was still true. Countdown end is per-peer coroutine timing, so a death right at GO could pass the victim's `IsMatchStartProtectionActive` gate but hit the master's gate → no `RPCApplyKillResult` → victim never respawned (out of bounds forever). Now the master broadcasts new `[PunRPC] RPCRespawnWithoutScore` (no score change, no HUD animation, just `HandleMultiplayerRoundDeath`) instead of dropping. `_matchOver` drop unchanged (endGame follows anyway).
+2. **Pause-exit strand** — synced pause menu freezes BOTH peers (timeScale 0), but pause-menu "Exit to Main Menu" is a local-only exit; the remaining peer stayed frozen with no notification. Added `GameManager.OnPlayerLeftRoom` override → `ForceDismissInGamePauseMenu()` on MP levels.
+3. **RestartMusic use-after-destroy** — `GameManager.RestartMusic` had no null checks; `_audioSource` is destroyed by `waitThenEndGame` at game over and `EndMenuManager.CheckButton` (gamepad path) can still call it. Guarded.
+4. **hasNoLives robustness** — `GameState.hasNoLives` checked `== 0`; ScoreKeeper returns -1 for unknown names, so a name-key mismatch made SP unwinnable (score drifts negative forever). Now `!= DOESNT_EXIST && <= 0` (matches the MP path's `<= 0`).
+
+**Reviewed but deliberately NOT changed:** remote avatars intentionally kinematic+unsimulated (PhotonInputView owns position — do not "fix" SetCountdownPhysicsFrozen leaving them unsimulated); grey platforms resolve to the SAME color every match in MP (deterministic path-hash — sync-correct, no per-match variety); per-platform Debug.Log spam at scene load (`[Platform IDs]`, `[Grey Platform Init]`) — candidate for stripping in WebGL builds.
+
+**State left behind:** On `Multiplayer` @ `08387490` + uncommitted: `GameManager.cs`, `GameState.cs`, this file. Compile later verified clean (zero `error CS`) in 6000.4.4f1 Editor.log after user reopened with the right version. **Also this session:** wrote `GRENADE_FEATURE_SPEC.md` (paint-grenade power-up tech spec, user-requested) and created branch `feature/paint-grenade` off `Multiplayer` @ `08387490` — NOTE the branch predates the 4 fixes above; commit the fixes to `Multiplayer` and re-branch (or rebase) before implementing, as the spec's §0 instructs.
+
+**Next agent should:** (1) open in Unity 6000.4.4f1, confirm zero `error CS`; (2) 2-peer ParrelSync playtest: normal round kills, a kill immediately at GO (fix 1), pause → one peer exits (fix 2), game over → gamepad button on end menu (fix 3); (3) then user commits/pushes.
+
 ### 2026-06-19 — Post-Slice 5 roadmap: SP, gamepad, UI art, WebGL build pipeline
 **Agent session goal:** Implement post-Slice 5 roadmap (WebGL ship, re-enable SP, browser gamepad, UI polish).
 
