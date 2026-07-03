@@ -206,14 +206,45 @@ All follow existing conventions: plain (non-buffered) targets, ints for enums, `
 - Player dies while holding a grenade: **loses it** (v1). This is the natural behavior, not extra work: `MultiplayerSpawner.ForceRespawn` destroys and re-instantiates the avatar, so `GrenadeInventory` state resets to empty. Do NOT add persistence plumbing to keep it — revisit only if playtesting says otherwise.
 - Player disconnects mid-claim: master's claim registry keys off pickupId, not actor state — a resolve to a gone actor is harmless (no peer matches `winnerActor`).
 
-## 8. Suggested implementation order (each step compiles + is testable alone)
+## 8. Implementation slices (one commit per slice — review each diff before starting the next)
 
-1. **Grenade projectile solo** (SP scene or MP editor, spawn via a debug key): physics, bounce damping, fuse, radius paint *local only*. Tune feel.
-2. **Aim UI**: arc preview + power ramp + throw. Still local.
-3. **Inventory + pickup** (local): falling pickup, collect, single-slot rule.
-4. **Networking**: spawner RPCs, claim arbitration, ghost grenade, detonation sync, paint broadcast.
-5. **Gating & lifecycle** (§7) + HUD icon polish.
-6. **Playtest matrix** (§9).
+Follow the repo's vertical-slice convention (see "Planned multiplayer integration" section above). Rules for every slice: it **compiles with zero `error CS`**, it is **testable on its own** via the listed gate, and it ends in **exactly one commit** on `feature/paint-grenade` using the given message prefix so the user can review slice-by-slice. Do not start slice N+1 until slice N is committed.
+
+### Slice G1 — Grenade projectile core (local only)
+- **Build:** `Grenade.prefab` (placeholder sprite), `Grenade Material.physicsMaterial2D`, new tag `grenade` (+ layer & Physics2D matrix per §3.6), `GrenadeProjectile` (physics, `bounceVelocityRetention` damping, fuse, bounds despawn), detonation radius paint **local-path only** (§3.7 without the broadcast), and a temporary editor-only debug spawn key to lob grenades from the mouse position.
+- **Files:** `Assets/scripts/Powerups/GrenadeProjectile.cs`, prefab + material assets, ProjectSettings (tags/layers/matrix).
+- **Gate:** in one editor, spawn grenades; bounces visibly decay (compare retention 1.0 vs 0.4); fuse detonates; platforms inside radius flip color; zero console errors.
+- **Commit:** `Slice G1: grenade projectile physics + local radius paint`
+
+### Slice G2 — Throw input, charge, arc preview
+- **Build:** `GrenadeInventory` (granted via the debug key for now), `GrenadeAimController` (clamped charge ramp, preview dots, gating per §3.5), `GrenadeThrower` (spawn offset, consume). Remove/repurpose G1's direct-spawn debug key into "grant grenade" debug key.
+- **Files:** `GrenadeInventory.cs`, `GrenadeAimController.cs`, `GrenadeThrower.cs`, player prefab edits (`Assets/Resources/{Black,White}Player.prefab`).
+- **Gate:** hold key → arc appears and power visibly ramps then holds at max; release → grenade follows the previewed initial arc; can't throw without a grenade; one grenade per grant.
+- **Commit:** `Slice G2: hold-to-charge throw with trajectory preview`
+
+### Slice G3 — Falling pickup + collection (local logic)
+- **Build:** `GrenadePickup.prefab` + `GrenadePickup.cs` (kinematic fall, player trigger detect, despawn below bounds), `PowerupSpawner` scheduling running **locally** (no RPCs yet), single-slot rule (touch while holding = no-op).
+- **Files:** `PowerupSpawner.cs`, `GrenadePickup.cs`, pickup prefab, scene wiring (`Bootstrap` in `level_1-multiplayer.unity`).
+- **Gate:** pickups appear on the configured interval at random X, fall slowly, collecting grants exactly one grenade, uncollected ones vanish at the bottom.
+- **Commit:** `Slice G3: falling grenade pickup + collection (local)`
+
+### Slice G4 — Networked pickups (spawn + claim arbitration)
+- **Build:** convert the spawner to master-authoritative: `RPCSpawnPowerup` (epoch-based deterministic fall), `RPCClaimPowerup` → master → `RPCResolvePowerup` (§3.3), pickup registry, IsMine-gated claim reporting.
+- **Files:** `GameManager.cs` (RPCs), `PowerupSpawner.cs`, `GrenadePickup.cs`.
+- **Gate (2-peer ParrelSync):** pickups fall identically on both peers; simultaneous-grab race gives the grenade to exactly ONE player and the pickup vanishes on both.
+- **Commit:** `Slice G4: master-authoritative pickup spawn + claim`
+
+### Slice G5 — Networked grenade (ghost + detonation sync + paint broadcast)
+- **Build:** `RPCSpawnGhostGrenade` (ghost mode per §3.6), `RPCDetonateGrenade` (snap ghost to authoritative position), per-platform paint broadcast at detonation (§3.7 full version), `grenadeId` scheme.
+- **Files:** `GameManager.cs`, `GrenadeThrower.cs`, `GrenadeProjectile.cs`.
+- **Gate (2-peer):** thrower's grenade appears + flies + explodes on BOTH editors at the same final position; painted platform sets identical (walk both players onto painted platforms — no fall-through on either editor).
+- **Commit:** `Slice G5: grenade ghost + synced detonation paint`
+
+### Slice G6 — Lifecycle gating, HUD, polish
+- **Build:** all §7 rules (pre-GO gating, game-over cleanup, rematch reset, pause behavior verification), HUD grenade icon (§3.4 optional part), pickup spin/explosion flash cosmetics.
+- **Files:** `GameManager.cs` end-game hooks, `PowerupSpawner.cs`, `GrenadeHud` (new, modeled on `ShootCooldownHud.cs`).
+- **Gate:** full §9 test matrix passes, including WebGL smoke build.
+- **Commit:** `Slice G6: grenade lifecycle gating + HUD polish`
 
 ## 9. Test plan (2-peer ParrelSync, per AGENT_CONTEXT technique — Editor.log grep works when MCP is down)
 
@@ -236,4 +267,4 @@ All follow existing conventions: plain (non-buffered) targets, ints for enums, `
 
 ## 11. Done criteria
 
-All §9 boxes checked in a 2-peer Editor playtest, zero `error CS`, tunables all live in inspectors with tooltips, AGENT_CONTEXT.md update-log entry appended describing what shipped and any deviations from this spec.
+All §9 boxes checked in a 2-peer Editor playtest, zero `error CS`, tunables all live in inspectors with tooltips, **exactly one commit per slice (G1–G6) with the §8 commit messages** so each diff is reviewable in isolation, AGENT_CONTEXT.md update-log entry appended describing what shipped and any deviations from this spec.
