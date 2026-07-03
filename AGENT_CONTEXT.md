@@ -149,6 +149,59 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-04 (session 2) — Grenade: Slice G3 shipped + G5 paint-sync pulled forward
+
+**Agent session goal:** Continue the paint-grenade feature from the G1/G2 handoff — implement
+G3 (falling pickup + local collection). A grenade paint desync surfaced in the user's 2-peer
+test mid-session; user chose to fix it immediately (out of slice order).
+
+**Shipped (committed on `feature/paint-grenade`; UNPUSHED — user pushes both):**
+- `ababa1ea` **G3** — `PowerupSpawner.cs` (on `Bootstrap`): local scheduler, random 15–25s
+  interval, random X (-40..38), `spawnTopY=52`, cap 2, gated on
+  `PlatformMotionEpoch>=0 && !CountdownActive`. Built around `SpawnPickup()` + a `_activePickups`
+  registry as the **seam for G4's master-authoritative RPCs**; `DebugSpawnNow()` for the H key.
+  `GrenadePickup.cs` (+ `Assets/Prefabs/GrenadePickup.prefab`): kinematic trigger, analytic
+  descent `y = spawnTopY - (NetworkNow - spawnTime)*fallSpeed` (**already epoch-ready for G4**),
+  `IsMine`+tag-gated collection grants one grenade, single-slot no-op while holding, despawn
+  below `despawnY=-25`. New `powerup` tag + `powerup` **layer (slot 12)**; Physics2D matrix:
+  powerup collides **ONLY** with `players_black`/`players_white` (trigger detection), all else
+  off. Debug key **H repurposed**: was instant-grant, now **drops a real pickup from the sky**.
+  Debug overlay: force sliders replaced by a **fall-speed slider** (`PowerupSpawner.FallSpeed`,
+  0.5–15) + kept charge-ramp. Scene re-serialized to 6.4 format (m_RootOrder drop etc.) —
+  benign churn, no data loss (verified).
+- `4712495c` **G5 paint-sync (pulled forward)** — `GrenadeProjectile.Detonate()` now, after each
+  local `ApplyPaintFromNetwork`, calls `GameManager.BroadcastPaintPlatform(pm.networkId, framework)`
+  to Others (lazy `FindFirstObjectByType<GameManager>()`) — the SAME call shots use. Fixes the
+  reported desync (grenade paint landed only on the thrower's peer). The remote **ghost** grenade
+  (see it fly/explode) is still TODO — cosmetic; platform colours now sync regardless.
+
+**Deviations / user calls (baked in):** pickup placeholder is **WHITE, scale ×6, heartbeat
+pulse** (scale breathes ±20% @1.5/s) — user's spec for the B&W game. "Six times larger" read as
+**×6 absolute** (was ×3) — user may want ×18; confirm. `fallSpeed` default still 1.5 (user tuning
+live via the slider — bake their chosen value when they name it).
+
+**Verified:** G3 mechanics in a single-editor harness (spawned a fake DYNAMIC player in the fall
+path, since pressing Play boots to `main_menu` via a play-mode start-scene override, not the MP
+level): collection grants exactly one, single-slot no-ops, fall + despawn, white/×6/pulse — zero
+grenade/powerup errors. **NOT yet 2-peer tested:** the `4712495c` paint-sync fix — needs the
+spec §9 test (throw on peer A → platforms flip on BOTH; walk both players onto a painted platform,
+no fall-through on either editor).
+
+**Process notes (this session):** `refresh_unity` drops the MCP stdio bridge during the compile —
+reconnects on the next call, not an error. Pressing Play from `level_1-multiplayer` boots to
+`main_menu` (start-scene override) so the MP level can't be exercised standalone via MCP — real
+pickup/paint testing is host-solo/2-peer by the user. Exit Play before editing scripts (unchanged).
+
+**What's blocked / to decide:** slice order is now scrambled — G5's paint half is done before G4.
+Remaining: G4 (networked pickup spawn + master-authoritative claim), G5 ghost (RPCSpawnGhostGrenade
+/ RPCDetonateGrenade), G6 (lifecycle gating + HUD + strip debug tooling + real sprite/size). Confirm
+order with the user. Parked-and-separate: the pre-existing MP platform-color desync (player appears
+on a wrong-coloured platform) — NOT the grenade issue.
+
+**Next agent should:** (1) have the user 2-peer test `4712495c` (grenade paint sync) first; (2) then
+either G4 or the G5 ghost per user preference; (3) keep the debug tooling until G6. Prefab/scene/matrix
+are wired — new work is mostly scripts + (for G4/G5) new RPCs on `GameManager`.
+
 ### 2026-07-04 — Grenade power-up: Slices G1 + G2 shipped (projectile + hold-to-charge throw)
 
 **Shipped (committed on `feature/paint-grenade`; user pushes):**
