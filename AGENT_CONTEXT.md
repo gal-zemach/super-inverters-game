@@ -14,7 +14,7 @@
 - **Repo path:** `/Users/nadav/Documents/GitHub/super-inverters-game/`
 - **The Claude default cwd `/Users/nadav/Documents/Claude/Super Inverters Reloaded/` is EMPTY.** The actual code is in the path above. `cd` there before doing anything.
 - **Active branch:** `Multiplayer` (tracked to `origin/Multiplayer`). **Slice 5 feature-complete in Editor** — extensive 2-peer playtest PASS 2026-06-19 (see update log).
-- **Engine:** Unity **6.3 LTS (`6000.3.16f1`)**. Migrated from 2020.3.48f1 via `Unity-upgrade` branch, merged into `Multiplayer` 2026-05-23. Open from Unity Hub as `super-inverters-game`.
+- **Engine:** Unity **`6000.4.4f1`** (required — see `ProjectSettings/ProjectVersion.txt`). WebGL build work upgraded from `6000.3.16f1` 2026-06-19. **Do not open this project with `6000.3.16f1`** — Editor logs show broken WebGL/OSX modules and Play mode fails. Open from Unity Hub as `super-inverters-game` and pick **6000.4.4f1**.
 - **Project is registered in Unity Hub** under the name `super-inverters-game`. The user opens the project from there. Don't `Add project` again.
 - **Latest published web build:** https://nmeidan.itch.io/superinverters — the live WebGL build, "the latest web version."
 - **Build target for multiplayer: WebGL.** Confirmed by user 2026-04-30. Plan all networking choices around WebGL constraints (no raw UDP; use WebSocket transport or WebRTC).

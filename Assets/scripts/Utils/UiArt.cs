@@ -10,7 +10,6 @@ namespace Utils
 		public static Sprite PauseExit => Load("UI/Pause/back_to_main_menu");
 		public static Sprite LobbyBackground => Load("UI/Lobby/Background");
 		public static Sprite LobbyVersus => Load("UI/Lobby/Versus static");
-		public static Sprite GameOverBanner => Load("UI/GameOver/Example");
 		public static Sprite GameOverExit => Load("UI/GameOver/Back to Main menu");
 
 		private static Sprite Load(string path)

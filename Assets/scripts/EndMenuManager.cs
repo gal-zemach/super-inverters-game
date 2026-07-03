@@ -35,23 +35,6 @@ public class EndMenuManager : MonoBehaviour
 	{
 		if (panel == null) return;
 
-		var banner = UiArt.GameOverBanner;
-		if (banner != null)
-		{
-			var bannerGo = new GameObject("DesignedWinBanner", typeof(RectTransform), typeof(Image));
-			bannerGo.transform.SetParent(panel, false);
-			bannerGo.transform.SetAsFirstSibling();
-			var rect = bannerGo.GetComponent<RectTransform>();
-			rect.anchorMin = new Vector2(0.5f, 0.75f);
-			rect.anchorMax = new Vector2(0.5f, 0.75f);
-			rect.pivot = new Vector2(0.5f, 0.5f);
-			rect.sizeDelta = new Vector2(480f, 120f);
-			var image = bannerGo.GetComponent<Image>();
-			image.sprite = banner;
-			image.preserveAspect = true;
-			image.color = Color.white;
-		}
-
 		var exitArt = UiArt.GameOverExit;
 		if (exitArt == null) return;
 
