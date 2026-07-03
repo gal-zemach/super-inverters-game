@@ -2,7 +2,7 @@
 %TAG !u! tag:unity3d.com,2011:
 --- !u!78 &1
 TagManager:
-  serializedVersion: 2
+  serializedVersion: 3
   tags:
   - shot
   - platform
@@ -12,6 +12,7 @@ TagManager:
   - platform_body
   - wall
   - shell
+  - grenade
   layers:
   - Default
   - TransparentFX
@@ -21,7 +22,7 @@ TagManager:
   - UI
   - 
   - 
-  - 
+  - grenade
   - shots_black
   - shots_white
   - shots
@@ -55,3 +56,6 @@ TagManager:
   - name: UI
     uniqueID: 2720446027
     locked: 0
+  m_RenderingLayers:
+  - Default
+  m_MigratedRenderPipelines: []
