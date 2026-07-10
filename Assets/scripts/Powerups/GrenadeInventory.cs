@@ -3,8 +3,9 @@ using UnityEngine;
 namespace Game.Powerups
 {
     // Grenade inventory on the player. Only meaningful on the local avatar; remote avatars
-    // never read it. One collected pickup grants a full pack (grenadesPerPickup throws);
-    // you cannot collect another pickup until the pack is used up.
+    // never read it. A collected pickup TOPS UP to a full pack (grenadesPerPickup throws):
+    // collectable at any count below max, ignored only when already full — so pickups
+    // refresh your ammo but never accumulate beyond the cap.
     public class GrenadeInventory : MonoBehaviour
     {
         [Tooltip("Grenades granted per pickup collected.")]
@@ -38,11 +39,11 @@ namespace Game.Powerups
 
         public bool HasGrenade => Count > 0;
 
-        // Returns false if still holding grenades from the previous pickup, so callers can
-        // tell whether the grant actually landed.
+        // Tops the inventory up to a full pack. Returns false only when already full, so
+        // callers can tell whether the grant actually landed.
         public bool Grant()
         {
-            if (Count > 0) return false;
+            if (Count >= grenadesPerPickup) return false;
             Count = grenadesPerPickup;
             return true;
         }

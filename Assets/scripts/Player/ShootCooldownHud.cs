@@ -41,6 +41,7 @@ namespace Game
 		private Framework? _barFramework;
 		private float _barWidth;
 		private RectTransform _grenadeRow;
+		private Image _grenadeRowBg;
 		private readonly System.Collections.Generic.List<Image> _grenadeIcons =
 			new System.Collections.Generic.List<Image>();
 		private Sprite _grenadeSprite;
@@ -79,13 +80,14 @@ namespace Game
 			float ammo01 = _localPlayer.BurstAmmo01;
 			_fillRect.sizeDelta = new Vector2(_barWidth * ammo01, barHeight);
 
-			UpdateGrenadeIcons();
+			UpdateGrenadeIcons(playerState.player_framework);
 		}
 
 		// One grenade icon per grenade in the local player's inventory, in a row under the
-		// burst bar. The row is parented to the bar root, so it follows the bar's anchoring
-		// for free. Icons are created lazily and toggled by count.
-		private void UpdateGrenadeIcons()
+		// lives. Black's row hugs the lives row's LEFT edge, White's hugs the RIGHT edge
+		// (mirroring the lives layout). An opaque white plate sits behind the icons so
+		// they never visually blend into level platforms.
+		private void UpdateGrenadeIcons(Framework framework)
 		{
 			if (_grenadeRow == null || _localPlayer == null) return;
 
@@ -98,6 +100,9 @@ namespace Game
 				if (thrower != null) _grenadeSprite = thrower.GrenadeSprite;
 			}
 
+			const float pad = 6f;
+			float iconW = grenadeIconHeight * 0.82f;
+
 			while (_grenadeIcons.Count < count)
 			{
 				var iconGo = new GameObject("GrenadeIcon",
@@ -107,18 +112,29 @@ namespace Game
 				rt.anchorMin = new Vector2(0f, 1f);
 				rt.anchorMax = new Vector2(0f, 1f);
 				rt.pivot = new Vector2(0f, 1f);
-				rt.anchoredPosition = new Vector2(_grenadeIcons.Count * grenadeIconSpacing, 0f);
-				rt.sizeDelta = new Vector2(grenadeIconHeight * 0.82f, grenadeIconHeight);
+				rt.sizeDelta = new Vector2(iconW, grenadeIconHeight);
 				var img = iconGo.GetComponent<Image>();
 				img.raycastTarget = false;
 				img.preserveAspect = true;
 				_grenadeIcons.Add(img);
 			}
 
+			bool anyShown = count > 0 && _grenadeSprite != null;
+			float plateW = pad * 2f + (count > 0 ? (count - 1) * grenadeIconSpacing + iconW : 0f);
+			float plateH = pad * 2f + grenadeIconHeight;
+
+			_grenadeRow.sizeDelta = new Vector2(plateW, plateH);
+			_grenadeRow.anchoredPosition = new Vector2(
+				(framework == Framework.BLACK ? 0f : _barWidth - plateW) + grenadeRowOffset.x,
+				grenadeRowOffset.y);
+			if (_grenadeRowBg != null) _grenadeRowBg.enabled = anyShown;
+
 			for (int i = 0; i < _grenadeIcons.Count; i++)
 			{
+				var rt = _grenadeIcons[i].rectTransform;
+				rt.anchoredPosition = new Vector2(pad + i * grenadeIconSpacing, -pad);
 				if (_grenadeIcons[i].sprite == null) _grenadeIcons[i].sprite = _grenadeSprite;
-				_grenadeIcons[i].enabled = _grenadeSprite != null && i < count;
+				_grenadeIcons[i].enabled = anyShown && i < count;
 			}
 		}
 
@@ -302,7 +318,8 @@ namespace Game
 			_fillImage.color = WhiteFill;
 			_fillImage.raycastTarget = false;
 
-			var rowGo = new GameObject("GrenadeRow", typeof(RectTransform));
+			var rowGo = new GameObject("GrenadeRow",
+				typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
 			rowGo.transform.SetParent(barGo.transform, false);
 			_grenadeRow = rowGo.GetComponent<RectTransform>();
 			_grenadeRow.anchorMin = new Vector2(0f, 0f);
@@ -310,6 +327,10 @@ namespace Game
 			_grenadeRow.pivot = new Vector2(0f, 1f);
 			_grenadeRow.anchoredPosition = grenadeRowOffset;
 			_grenadeRow.sizeDelta = Vector2.zero;
+			_grenadeRowBg = rowGo.GetComponent<Image>();
+			_grenadeRowBg.color = Color.white;   // opaque plate so icons never blend into platforms
+			_grenadeRowBg.raycastTarget = false;
+			_grenadeRowBg.enabled = false;
 
 			_barRoot.gameObject.SetActive(false);
 		}

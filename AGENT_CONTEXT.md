@@ -149,6 +149,21 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-10 (session 4) — Converge FX, HUD polish, lobby feedback, top-up pickups
+
+**Shipped (one commit after session 3's):** DBZ converge orbs on collect (ring of white glow
+orbs flies inward during the whiten; unparented PS — pickup's ×6 scale would blow up the ring);
+collapsible debug panel (▶/▼, state static across round reloads); pickup fallSpeed baked 4.94;
+boom volume 0.35→0.22 (long reverb tail was MASKING the quiet 0.22 shots — investigated live:
+5 simultaneous booms + collect leave the Shoot source healthy, so "shot SFX broke" was masking,
+not state corruption; if reported again check (a) shots still fire visually (b) jump SFX works);
+grenade HUD: White's icons right-aligned to mirror its lives row, opaque white plate behind
+icons; lobby "Create room" locks + animated "Creating..." until Photon answers (reset on
+joined/left/failed); pickups now TOP UP to max (collect at any count below 2; ignored at full —
+no accumulation). GOTCHA: a duplicate converge field block appeared in GrenadePickup.cs from a
+PARALLEL edit (user-side IDE/AI?) causing CS0102 — if fields duplicate mysteriously, check for
+that channel before blaming yourself.
+
 ### 2026-07-10 (session 3) — Pickup collect flash + focused debug panel
 
 **Shipped (commit after the Grenade Juice one):**

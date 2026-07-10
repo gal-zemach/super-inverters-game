@@ -14,7 +14,10 @@ namespace Game.Powerups
         private const float RingWidth = 0.3f;
 
         private const string BoomClipResourcePath = "Audio/grenade_explosion";
-        private const float BoomVolume = 0.35f;
+        // Keep well below the shots' 0.22 x their sharper envelope: the boom clip has a
+        // ~3s reverb tail, and overlapping tails at higher volume MASK the quiet shot
+        // SFX entirely — which players report as "shooting sound stopped working".
+        private const float BoomVolume = 0.22f;
 
         private static AudioClip s_boomClip;
         private static bool s_boomLoadAttempted;

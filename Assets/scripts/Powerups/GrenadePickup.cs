@@ -36,6 +36,15 @@ namespace Game.Powerups
                  "and gradually turns solid white, then vanishes.")]
         [SerializeField] private float collectAnimSeconds = 0.6f;
 
+        [Header("Collect converge orbs (DBZ energy gather)")]
+        [Tooltip("White orbs spawn on a ring this many world units out and fly inward.")]
+        [SerializeField] private float convergeRadius = 4.5f;
+        [Tooltip("Inward speed of the orbs (world units/sec).")]
+        [SerializeField] private float convergeOrbSpeed = 14f;
+        [SerializeField] private float convergeOrbsPerSecond = 60f;
+        [Tooltip("World-space size of each orb.")]
+        [SerializeField] private float convergeOrbSize = 0.7f;
+
 #if UNITY_EDITOR
         // TESTING ONLY — compiled out of real builds. When > 0, overrides the prefab's
         // CircleCollider2D radius on every live pickup (debug slider, applied in Update so
@@ -136,13 +145,12 @@ namespace Game.Powerups
             GrenadeInventory inv = other.GetComponentInParent<GrenadeInventory>();
             if (inv == null) return;
 
-            // Single-slot rule: touching a pickup while already holding one does nothing.
-            if (inv.HasGrenade) return;
-
+            // Top-up rule: the pickup refills to a full pack; only a FULL inventory ignores
+            // it (no accumulating beyond the cap).
             // G3: grant + collect locally. TODO(G4): instead report the claim to the master
             // (GameManager.RPCClaimPowerup, RpcTarget.MasterClient, pickupId, actorNumber);
             // RPCResolvePowerup then grants the winner + collects the pickup on every peer.
-            inv.Grant();
+            if (!inv.Grant()) return;
             Collect();
         }
 
@@ -173,6 +181,8 @@ namespace Game.Powerups
                 overlay.material = new Material(silhouetteShader);
             overlay.color = new Color(1f, 1f, 1f, 0f);
 
+            GameObject convergeGo = CreateConvergeOrbs();
+
             const float fadeTail = 0.2f; // last fraction: the now-white grenade fades away
             float duration = EffectiveCollectAnimSeconds;
             float t = 0f;
@@ -187,7 +197,43 @@ namespace Game.Powerups
                     _sr.color = new Color(1f, 1f, 1f, 1f - fade);
                 yield return null;
             }
+            if (convergeGo != null) Destroy(convergeGo);
             Destroy(gameObject);
+        }
+
+        // DBZ-style energy gather: white glow orbs spawn on a ring around the (frozen)
+        // pickup and converge on it. Deliberately NOT parented — the pickup's x6 scale
+        // would multiply the ring radius; the pickup doesn't move during the anim anyway.
+        private GameObject CreateConvergeOrbs()
+        {
+            var go = new GameObject("CollectConverge");
+            go.transform.position = transform.position;
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.scalingMode = ParticleSystemScalingMode.Local;
+            main.startSpeed = -convergeOrbSpeed;                       // negative = inward
+            main.startLifetime = convergeRadius / convergeOrbSpeed;    // orbs die at the centre
+            main.startSize = convergeOrbSize;
+            main.startColor = Color.white;
+            main.maxParticles = 300;
+
+            var emission = ps.emission;
+            emission.rateOverTime = convergeOrbsPerSecond;
+
+            var shape = ps.shape;
+            shape.enabled = true;
+            shape.shapeType = ParticleSystemShapeType.Circle;
+            shape.radius = convergeRadius;
+            shape.radiusThickness = 0f;                                // ring edge only
+
+            var psr = go.GetComponent<ParticleSystemRenderer>();
+            var mat = new Material(Shader.Find("Sprites/Default"));
+            var glow = GrenadeProjectile.GlowSprite;
+            if (glow != null) mat.mainTexture = glow.texture;          // soft round ki orbs
+            psr.material = mat;
+            psr.sortingOrder = 12;
+            return go;
         }
 
         private void Despawn()

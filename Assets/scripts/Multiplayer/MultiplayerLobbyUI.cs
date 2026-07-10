@@ -15,6 +15,7 @@ namespace Multiplayer
     {
         private const string CopyLabel = "Copy";
         private const string CopiedLabel = "Copied!";
+        private const string CreateRoomLabel = "Create room";
 
         // Gray palette — light neutrals only.
         private static readonly Color PanelBg = new Color(0.88f, 0.88f, 0.88f, 0.98f);
@@ -41,6 +42,9 @@ namespace Multiplayer
         private Text copyButtonText;
         private InputField roomInput;
         private string currentShareUrl;
+        private Button createRoomButton;
+        private Text createRoomText;
+        private bool creatingRoom;
 
         private enum LobbyLayout { Browse, RoomHost, RoomGuest, Minimal }
         private LobbyLayout currentLayout = (LobbyLayout)(-1);
@@ -69,11 +73,13 @@ namespace Multiplayer
 
         public override void OnJoinedRoom()
         {
+            ResetCreateRoomButton();
             RefreshUI();
         }
 
         public override void OnLeftRoom()
         {
+            ResetCreateRoomButton();
             RefreshUI();
         }
 
@@ -94,6 +100,7 @@ namespace Multiplayer
 
         public override void OnCreateRoomFailed(short returnCode, string message)
         {
+            ResetCreateRoomButton();
             SetStatus($"Could not create room: {message}");
         }
 
@@ -109,6 +116,11 @@ namespace Multiplayer
             }
 
             rootPanel.SetActive(true);
+
+            // Click feedback for the slow room-creation round-trip: the button locks and
+            // its label ticks "Creating." → ".." → "..." until Photon answers.
+            if (creatingRoom && createRoomText != null)
+                createRoomText.text = "Creating" + new string('.', 1 + (int)(Time.unscaledTime * 3f) % 3);
 
             bool connected = PhotonNetwork.IsConnected;
             bool inRoom = PhotonNetwork.InRoom;
@@ -196,7 +208,20 @@ namespace Multiplayer
             if (statusText != null) statusText.text = message;
         }
 
-        private void OnCreateRoom() => bootstrap?.CreateRoom();
+        private void OnCreateRoom()
+        {
+            if (bootstrap == null || creatingRoom) return;
+            creatingRoom = true;
+            if (createRoomButton != null) createRoomButton.interactable = false;
+            bootstrap.CreateRoom();
+        }
+
+        private void ResetCreateRoomButton()
+        {
+            creatingRoom = false;
+            if (createRoomButton != null) createRoomButton.interactable = true;
+            if (createRoomText != null) createRoomText.text = CreateRoomLabel;
+        }
 
         private void OnJoinClicked()
         {
@@ -270,9 +295,10 @@ namespace Multiplayer
                 new Vector2(0.06f, 0.54f), new Vector2(0.94f, 0.87f), SectionBg);
             CreateStretchText(hostPanel.transform, "HostLabel", "Host a game",
                 new Vector2(0.04f, 0.54f), new Vector2(0.96f, 0.96f), 20, TextAnchor.MiddleCenter, TextDark);
-            CreateStretchButton(hostPanel.transform, "CreateRoom", "Create room",
+            createRoomButton = CreateStretchButton(hostPanel.transform, "CreateRoom", CreateRoomLabel,
                 new Vector2(0.04f, 0.08f), new Vector2(0.96f, 0.50f),
                 ButtonBg, OnCreateRoom, TextLight);
+            createRoomText = createRoomButton.GetComponentInChildren<Text>();
 
             guestPanel = CreateStretchPanel(rootPanel.transform, "GuestPanel",
                 new Vector2(0.06f, 0.08f), new Vector2(0.94f, 0.50f), SectionBg);

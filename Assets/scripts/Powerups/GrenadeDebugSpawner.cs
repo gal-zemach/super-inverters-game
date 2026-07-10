@@ -66,15 +66,29 @@ namespace Game.Powerups
             return null;
         }
 
+        // Static so the collapsed state survives scene reloads (rounds) within a session.
+        private static bool s_collapsed;
+
         private void OnGUI()
         {
+            var panelRect = new Rect(10, 10, 330, s_collapsed ? 34f : 232f);
+            GUI.DrawTexture(panelRect, PanelBg);
+            GUILayout.BeginArea(panelRect, GUI.skin.box);
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(s_collapsed ? "▶" : "▼", GUILayout.Width(26f)))
+                s_collapsed = !s_collapsed;
+            GUILayout.Label($"Grenade debug (Editor only) — '{spawnKey}' drops a pickup");
+            GUILayout.EndHorizontal();
+            if (s_collapsed)
+            {
+                GUILayout.EndArea();
+                return;
+            }
+
             GrenadeInventory inv = FindLocalInventory();
             PowerupSpawner spawner = Object.FindFirstObjectByType<PowerupSpawner>();
 
-            var panelRect = new Rect(10, 10, 330, 208);
-            GUI.DrawTexture(panelRect, PanelBg);
-            GUILayout.BeginArea(panelRect, GUI.skin.box);
-            GUILayout.Label($"Grenade debug (Editor only) — '{spawnKey}' drops a pickup");
             GUILayout.Label(inv != null ? $"Grenades held: {inv.Count}" : "Grenades held: (no local player)");
             if (inv != null)
                 inv.DebugAlwaysHaveGrenade = GUILayout.Toggle(
