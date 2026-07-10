@@ -4,14 +4,15 @@ using UnityEngine;
 
 namespace Game.Powerups
 {
-    // Slice G1: local-only grenade projectile.
+    // Grenade projectile.
     //   * full Rigidbody2D physics, bounces off platforms/floor/walls (see the
     //     `grenade` layer's Physics2D matrix row), each bounce damped by
     //     bounceVelocityRetention;
     //   * detonates after a fuse and paints every platform whose collider overlaps
-    //     explosionRadius the thrower's colour.
-    // Networking (ghost + detonation sync + paint broadcast) is added in Slice G5;
-    // the TODO markers below are the seams for that.
+    //     explosionRadius the thrower's colour (paint broadcast per platform);
+    //   * ghost mode (Slice G5): the remote peer's copy simulates the same physics but
+    //     never paints — it waits for the owner's RPCDetonateGhostGrenade to explode at
+    //     the authoritative position (with a grace-fuse fallback if that never arrives).
     [RequireComponent(typeof(Rigidbody2D))]
     [RequireComponent(typeof(CircleCollider2D))]
     public class GrenadeProjectile : MonoBehaviour
@@ -46,6 +47,40 @@ namespace Game.Powerups
         private bool _detonated;
         private int _platformLayersMask;
         private GameManager _gameManager;
+
+        // Ghost state (G5): a ghost is cosmetic-only. It normally detonates via
+        // GhostDetonateAt (owner's RPC, exact position); the grace below is how long past
+        // its nominal fuse it waits before detonating in place as a fallback.
+        private const float GhostFuseGraceSeconds = 0.75f;
+        private bool _isGhost;
+        private float _ghostPaintRadius = -1f;
+        private GrenadeThrower _ownerThrower;
+        private int _ownerGrenadeId = -1;
+
+        // The fuse this grenade will actually use; read right after Init by the thrower
+        // so the ghost RPC carries the real value.
+        public float FuseSecondsAtSpawn => _fuseRemaining;
+
+        public void SetOwnerCallback(GrenadeThrower thrower, int grenadeId)
+        {
+            _ownerThrower = thrower;
+            _ownerGrenadeId = grenadeId;
+        }
+
+        public void InitGhost(Framework framework, Vector2 initialVelocity, float fuseSeconds)
+        {
+            Init(framework, initialVelocity);
+            _isGhost = true;
+            _fuseRemaining = fuseSeconds + GhostFuseGraceSeconds;
+        }
+
+        // Owner told us exactly where it exploded: snap there and detonate.
+        public void GhostDetonateAt(Vector2 pos, float paintRadius)
+        {
+            transform.position = pos;
+            _ghostPaintRadius = paintRadius;
+            Detonate();
+        }
 
         private void Awake()
         {
@@ -99,30 +134,38 @@ namespace Game.Powerups
             _detonated = true;
 
             Vector2 pos = transform.position;
-            Collider2D[] hits = Physics2D.OverlapCircleAll(pos, explosionRadius, _platformLayersMask);
-            var painted = new HashSet<PlatformManager>();
-            foreach (var hit in hits)
+            float radius = _isGhost && _ghostPaintRadius > 0f ? _ghostPaintRadius : explosionRadius;
+            GrenadeExplosionRing.Spawn(pos, radius, _framework);
+
+            if (!_isGhost)
             {
-                var pm = hit.GetComponentInParent<PlatformManager>();
-                if (pm == null || painted.Contains(pm)) continue;
-                painted.Add(pm);
-                // Local apply: colour + collision layer + release of mismatched carried
-                // players. ApplyPaintFromNetwork deliberately does NOT re-broadcast, so we
-                // broadcast each platform explicitly below — same shape as the shot-hit and
-                // spawn-repaint paths. THIS is what makes the remote peer's platforms flip.
-                pm.ApplyPaintFromNetwork(_framework);
-                if (PhotonNetwork.InRoom && pm.networkId >= 0)
+                Collider2D[] hits = Physics2D.OverlapCircleAll(pos, radius, _platformLayersMask);
+                var painted = new HashSet<PlatformManager>();
+                foreach (var hit in hits)
                 {
-                    if (_gameManager == null) _gameManager = FindFirstObjectByType<GameManager>();
-                    if (_gameManager != null)
-                        _gameManager.BroadcastPaintPlatform(pm.networkId, _framework);
+                    var pm = hit.GetComponentInParent<PlatformManager>();
+                    if (pm == null || painted.Contains(pm)) continue;
+                    painted.Add(pm);
+                    // Local apply: colour + collision layer + release of mismatched carried
+                    // players. ApplyPaintFromNetwork deliberately does NOT re-broadcast, so we
+                    // broadcast each platform explicitly below — same shape as the shot-hit and
+                    // spawn-repaint paths. THIS is what makes the remote peer's platforms flip.
+                    pm.ApplyPaintFromNetwork(_framework);
+                    if (PhotonNetwork.InRoom && pm.networkId >= 0)
+                    {
+                        if (_gameManager == null) _gameManager = FindFirstObjectByType<GameManager>();
+                        if (_gameManager != null)
+                            _gameManager.BroadcastPaintPlatform(pm.networkId, _framework);
+                    }
                 }
+
+                // Tell the remote ghost exactly where and how big the boom was (explicit
+                // null check, not ?. — the thrower may be a destroyed Unity object mid-reload).
+                if (_ownerThrower != null)
+                    _ownerThrower.NotifyOwnerDetonated(_ownerGrenadeId, pos, radius);
             }
 
-            // TODO(G5): RPCSpawnGhostGrenade + RPCDetonateGrenade so the REMOTE peer also
-            //           sees the grenade fly and explode at `pos` (cosmetic — platform colours
-            //           already sync via the per-platform broadcast above).
-            // TODO(G6): spawn explosion VFX/SFX (detach or delay-destroy per spec 3.7a).
+            // TODO(G6): explosion VFX polish per spec 3.7a (ring + SFX live in GrenadeExplosionRing).
             Destroy(gameObject);
         }
     }
