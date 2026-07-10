@@ -3,8 +3,7 @@ using UnityEngine;
 namespace Game.Powerups
 {
     // Single-grenade inventory (capacity 1) on the player. Only meaningful on the local
-    // avatar; remote avatars never read it. Granted by a pickup (G3+) or the debug key,
-    // consumed on throw.
+    // avatar; remote avatars never read it. Granted by a pickup, consumed on throw.
     public class GrenadeInventory : MonoBehaviour
     {
         public bool HasGrenade { get; private set; }

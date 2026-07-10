@@ -3748,7 +3748,7 @@ MonoBehaviour:
   spawnXMin: -40
   spawnXMax: 38
   spawnTopY: 52
-  fallSpeed: 1.5
+  fallSpeed: 1.9
   maxConcurrentPickups: 2
 --- !u!1 &1568289274
 GameObject:

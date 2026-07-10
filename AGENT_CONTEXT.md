@@ -149,6 +149,49 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-10 — G5 COMPLETE & 2-peer playtested (ghost + explosion FX/SFX); tuning baked
+
+**Agent session goal:** Act on the user's live-testing feedback: tuning tweaks + sliders,
+always-have-grenade debug, explosion visual + sound, and the G5 ghost (remote peer now sees
+the grenade fly and explode). **User confirmed 2-peer PASS on the ghost + explosion.**
+
+**Shipped (committed this session as two commits — `Slice G5: grenade ghost + synced detonation
+paint` + `chore: bake playtested grenade tuning; strip debug tooling`; the whole branch is still
+UNPUSHED — user pushes):**
+- **G5 ghost:** `GrenadeThrower.cs` RPCs `RPCSpawnGhostGrenade` (Others) on throw and
+  `RPCDetonateGhostGrenade` (Others) on detonation. **DEVIATION from spec §3.8:** both RPCs
+  live on the PLAYER's PhotonView, not GameManager — the remote copy of the thrower already
+  has the grenadePrefab reference + framework, so zero scene wiring; per-view RPC ordering
+  guarantees spawn-before-detonate. Ghost = same prefab via `GrenadeProjectile.InitGhost`:
+  simulates physics locally, NEVER paints, snaps to the authoritative pos/radius on the
+  detonate RPC; +0.75s grace fuse as fallback; if the ghost is already gone the RPC handler
+  spawns the ring directly at the authoritative spot.
+- **Explosion FX:** new `GrenadeExplosionRing.cs` — ring expands 0.5→paint radius over 0.35s
+  (ease-out, fades, paint-colour), spawned by both real and ghost detonations; also plays the
+  boom SFX (2D one-shot, `BoomVolume` const 0.35, throwaway GO — PlayClipAtPoint would be
+  3D-attenuated).
+- **SFX asset:** `Assets/Resources/Audio/grenade_explosion.wav` ← "Big Explosion"
+  (DeathFlash.flac, converted via afconvert) by **Blender Foundation, OpenGameArt,
+  CC-BY 3.0 — ATTRIBUTION REQUIRED on the published game page** (user's pick, replacing the
+  CC0 NenadSimic one). Loaded lazily via `Resources.Load("Audio/grenade_explosion")`;
+  missing clip = one warning, silent, no error.
+- **Debug tooling: used for tuning, then STRIPPED entirely (user call — G6's debug-strip done
+  early):** deleted `GrenadeDebugSpawner.cs` (H-key pickup drop + slider overlay), removed
+  `PowerupSpawner.DebugSpawnNow` + `FallSpeed` accessor, `GrenadeAimController` tuning
+  accessors, `GrenadeProjectile` static fuse/radius overrides, and the (never-committed)
+  `GrenadeInventory.debugAlwaysHaveGrenade`. Grenades now come ONLY from falling pickups.
+  The screenshot-the-sliders → bake workflow worked well; rebuild it from this entry's git
+  history if another tuning pass is ever needed.
+- **Tuning BAKED from the user's panel screenshot:** fallSpeed **1.9** (scene Bootstrap),
+  throwForceMax **53.8** + chargeRamp 1.2 (both player prefabs), fuseSeconds **1.6**
+  (user revised down from the screenshot's 2.59) + explosionRadius **14.1** (Grenade.prefab).
+
+**Next agent should:** (1) **G4** per spec §3.3/§8 — pickups still spawn per-peer independently,
+so peers see DIFFERENT falling grenades (the `PowerupSpawner.SpawnPickup` seam is ready);
+(2) **G6 polish** — HUD, real grenade/pickup sprites + sizes, lifecycle gating
+(`ClearAllPickups` wiring into end-game), and the CC-BY attribution line on the itch.io page
+(the debug strip half of G6 is already done); (3) remind the user to push the branch.
+
 ### 2026-07-04 (session 2) — Grenade: Slice G3 shipped + G5 paint-sync pulled forward
 
 **Agent session goal:** Continue the paint-grenade feature from the G1/G2 handoff — implement

@@ -91,11 +91,6 @@ namespace Game.Powerups
             }
         }
 
-        // Tuning accessors used by the temporary GrenadeDebugSpawner slider UI.
-        public float ThrowForceMin { get => throwForceMin; set => throwForceMin = value; }
-        public float ThrowForceMax { get => throwForceMax; set => throwForceMax = value; }
-        public float ChargeRampPerSecond { get => chargeRampPerSecond; set => chargeRampPerSecond = value; }
-
         private float Charge01 => Mathf.Clamp01(_heldTime * chargeRampPerSecond);
 
         private bool Held() =>

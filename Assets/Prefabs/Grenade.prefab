@@ -171,6 +171,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeProjectile
   grenadeGravityScale: 1
   bounceVelocityRetention: 0.6
-  fuseSeconds: 2.5
-  explosionRadius: 6
+  fuseSeconds: 1.6
+  explosionRadius: 14.1
   detonateOnBoundsExit: 0

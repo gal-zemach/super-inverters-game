@@ -817,7 +817,7 @@ MonoBehaviour:
   throwKey: 103
   throwButton: 
   throwForceMin: 8
-  throwForceMax: 47.8
+  throwForceMax: 53.8
   chargeRampPerSecond: 1.2
   beamOriginOffset: 1.2
   beamLenMin: 2

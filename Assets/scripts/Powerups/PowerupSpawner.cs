@@ -45,10 +45,6 @@ namespace Game.Powerups
         private static double NetworkNow =>
             PhotonNetwork.InRoom ? PhotonNetwork.Time : Time.timeAsDouble;
 
-        // Live-tuning accessor for the temporary GrenadeDebugSpawner slider. Applies to the
-        // NEXT spawned pickup (changing it mid-flight would teleport an analytic fall).
-        public float FallSpeed { get => fallSpeed; set => fallSpeed = value; }
-
         private void Awake() => ResetTimer();
 
         private void Update()
@@ -74,14 +70,6 @@ namespace Game.Powerups
             int pickupId = _nextPickupId++;
             float spawnX = Random.Range(spawnXMin, spawnXMax);
             SpawnPickup(pickupId, spawnX, NetworkNow);
-        }
-
-        // Debug/editor helper (the temporary 'H' key): drop a pickup from the sky right now,
-        // ignoring the interval and the concurrency cap so testing is instant.
-        public void DebugSpawnNow()
-        {
-            PruneDead();
-            SpawnAtRandomX();
         }
 
         // Instantiate + init a pickup. In G4 this is the shared body invoked by RPCSpawnPowerup
