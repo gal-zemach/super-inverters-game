@@ -149,6 +149,25 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-10 (session 3) — Pickup collect flash + focused debug panel
+
+**Shipped (commit after the Grenade Juice one):**
+- **Collect animation:** on pickup the grenade freezes in place, gradually turns SOLID WHITE
+  (anime power-up) and vanishes — 0.6s baked (`collectAnimSeconds`). The whiten uses a
+  child SpriteRenderer with the built-in `GUI/Text Shader` (renders sprite alpha as flat
+  colour — the only way to push a dark sprite TO white; tints only darken). NOTE for the
+  WebGL build: if that shader gets stripped, add it to Always Included Shaders (there's a
+  graceful fade-only fallback if Shader.Find returns null).
+- **Debug panel slimmed to the pickup-test kit** (all `#if UNITY_EDITOR`): H-drop, held
+  count, always-have toggle, pickup fall speed (1.9 baked), pickup hitbox radius slider
+  (live on falling pickups; 0.25 prefab value confirmed by playtest), collect whiten
+  seconds. Removed the fuse/blink/trail sliders AND their static overrides — those values
+  are final in Grenade.prefab (fuse 2.31, blink 1.5/s, trail 0.45s@40/s).
+- **Shot-SFX "regression" investigated — NOT a bug:** full chain audited (EnableSFX=1 both
+  prefabs, AudioSources wired, PLAYER-SHOOT.wav guid intact since origin/Multiplayer).
+  Cause was environmental — two open editors (ParrelSync clone) mess with editor audio
+  focus; user confirmed sound works. Remember: remote/ghost shots are silent BY DESIGN.
+
 ### 2026-07-10 (session 2) — "Grenade Juice": sprite, spin, mid-air detonate, LED fuse light, trail, 2-pack pickups, HUD
 
 **Agent session goal:** Real grenade sprite + a juice pass on the whole mechanic, driven by

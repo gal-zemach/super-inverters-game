@@ -69,8 +69,9 @@ namespace Game.Powerups
         private void OnGUI()
         {
             GrenadeInventory inv = FindLocalInventory();
+            PowerupSpawner spawner = Object.FindFirstObjectByType<PowerupSpawner>();
 
-            var panelRect = new Rect(10, 10, 330, 296);
+            var panelRect = new Rect(10, 10, 330, 208);
             GUI.DrawTexture(panelRect, PanelBg);
             GUILayout.BeginArea(panelRect, GUI.skin.box);
             GUILayout.Label($"Grenade debug (Editor only) — '{spawnKey}' drops a pickup");
@@ -79,28 +80,23 @@ namespace Game.Powerups
                 inv.DebugAlwaysHaveGrenade = GUILayout.Toggle(
                     inv.DebugAlwaysHaveGrenade, " always have a grenade (turn OFF to test collection)");
 
-            // Static overrides. Fallback constants MUST match the values baked in
-            // Grenade.prefab / GrenadeProjectile — the slider re-assigns them every frame.
-            float fuse = GrenadeProjectile.DebugFuseOverride > 0f
-                ? GrenadeProjectile.DebugFuseOverride : 2.31f;
-            GUILayout.Label($"Fuse seconds (next throw): {fuse:F2}");
-            GrenadeProjectile.DebugFuseOverride = GUILayout.HorizontalSlider(fuse, 0.5f, 10f);
-            GrenadeProjectile.DebugFuseLightAlwaysOn = GUILayout.Toggle(
-                GrenadeProjectile.DebugFuseLightAlwaysOn, " fuse light always ON (visibility test)");
-            float blink = GrenadeProjectile.DebugBlinkHzOverride > 0f
-                ? GrenadeProjectile.DebugBlinkHzOverride : 1.5f;
-            GUILayout.Label($"Fuse light blinks/sec (live): {blink:F1}");
-            GrenadeProjectile.DebugBlinkHzOverride = GUILayout.HorizontalSlider(blink, 0.5f, 12f);
+            if (spawner != null)
+            {
+                GUILayout.Label($"Pickup fall speed (next pickup): {spawner.FallSpeed:F2} u/s");
+                spawner.FallSpeed = GUILayout.HorizontalSlider(spawner.FallSpeed, 0.5f, 15f);
+            }
 
-            float trailLife = GrenadeProjectile.DebugTrailLifetimeOverride > 0f
-                ? GrenadeProjectile.DebugTrailLifetimeOverride : 0.45f;
-            GUILayout.Label($"Trail decay seconds (next throw): {trailLife:F2}");
-            GrenadeProjectile.DebugTrailLifetimeOverride = GUILayout.HorizontalSlider(trailLife, 0.1f, 2f);
+            // Fallback constant MUST match the radius baked in GrenadePickup.prefab.
+            float radius = GrenadePickup.DebugColliderRadiusOverride > 0f
+                ? GrenadePickup.DebugColliderRadiusOverride : 0.25f;
+            GUILayout.Label($"Pickup hitbox radius (live): {radius:F2}");
+            GrenadePickup.DebugColliderRadiusOverride = GUILayout.HorizontalSlider(radius, 0.1f, 1.5f);
 
-            float trailRate = GrenadeProjectile.DebugTrailRateOverride >= 0f
-                ? GrenadeProjectile.DebugTrailRateOverride : 40f;
-            GUILayout.Label($"Trail particles/sec (next throw): {trailRate:F0}");
-            GrenadeProjectile.DebugTrailRateOverride = GUILayout.HorizontalSlider(trailRate, 0f, 120f);
+            // Fallback MUST match collectAnimSeconds' serialized default in GrenadePickup.
+            float collectAnim = GrenadePickup.DebugCollectAnimOverride > 0f
+                ? GrenadePickup.DebugCollectAnimOverride : 0.6f;
+            GUILayout.Label($"Collect whiten seconds (next pickup): {collectAnim:F1}");
+            GrenadePickup.DebugCollectAnimOverride = GUILayout.HorizontalSlider(collectAnim, 0.2f, 8f);
             GUILayout.EndArea();
         }
     }

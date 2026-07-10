@@ -32,6 +32,32 @@ namespace Game.Powerups
         [Tooltip("Optional spin while falling (deg/sec). 0 = no spin.")]
         [SerializeField] private float spinDegPerSecond = 0f;
 
+        [Tooltip("Anime-style power-up on pickup: the grenade freezes where it was collected " +
+                 "and gradually turns solid white, then vanishes.")]
+        [SerializeField] private float collectAnimSeconds = 0.6f;
+
+#if UNITY_EDITOR
+        // TESTING ONLY — compiled out of real builds. When > 0, overrides the prefab's
+        // CircleCollider2D radius on every live pickup (debug slider, applied in Update so
+        // it tunes pickups already falling). Prefab-baked value: 0.25 (×6 scale = 1.5 world).
+        public static float DebugColliderRadiusOverride = -1f;
+        // When > 0, overrides collectAnimSeconds for the next collection (debug slider;
+        // fallback constant in GrenadeDebugSpawner MUST match the serialized default).
+        public static float DebugCollectAnimOverride = -1f;
+        private CircleCollider2D _debugCollider;
+#endif
+
+        private float EffectiveCollectAnimSeconds
+        {
+            get
+            {
+#if UNITY_EDITOR
+                if (DebugCollectAnimOverride > 0f) return DebugCollectAnimOverride;
+#endif
+                return collectAnimSeconds;
+            }
+        }
+
         private SpriteRenderer _sr;
         private int _pickupId;
         private double _spawnTime;
@@ -63,6 +89,13 @@ namespace Game.Powerups
         private void Update()
         {
             if (_collected) return;
+#if UNITY_EDITOR
+            if (DebugColliderRadiusOverride > 0f)
+            {
+                if (_debugCollider == null) _debugCollider = GetComponent<CircleCollider2D>();
+                if (_debugCollider != null) _debugCollider.radius = DebugColliderRadiusOverride;
+            }
+#endif
             ApplyFallPosition();
             ApplyPulse();
             if (spinDegPerSecond != 0f)
@@ -106,11 +139,55 @@ namespace Game.Powerups
             // Single-slot rule: touching a pickup while already holding one does nothing.
             if (inv.HasGrenade) return;
 
-            // G3: grant + destroy locally. TODO(G4): instead report the claim to the master
+            // G3: grant + collect locally. TODO(G4): instead report the claim to the master
             // (GameManager.RPCClaimPowerup, RpcTarget.MasterClient, pickupId, actorNumber);
-            // RPCResolvePowerup then grants the winner + destroys the pickup on every peer.
+            // RPCResolvePowerup then grants the winner + collects the pickup on every peer.
             inv.Grant();
-            Despawn();
+            Collect();
+        }
+
+        // Collected: stop falling/colliding immediately, play the whiten-and-vanish flash,
+        // then self-destruct. (Out-of-bounds despawn stays instant — see Despawn.)
+        private void Collect()
+        {
+            if (_collected) return;
+            _collected = true;
+            if (_owner != null) _owner.Unregister(_pickupId);
+            var col = GetComponent<CircleCollider2D>();
+            if (col != null) col.enabled = false;
+            StartCoroutine(CollectFlash());
+        }
+
+        private System.Collections.IEnumerator CollectFlash()
+        {
+            // White-silhouette overlay: GUI/Text Shader draws the sprite's alpha as a flat
+            // colour — the only way to push a dark sprite TO white (tints only darken).
+            // Crossfading it over the normal sprite reads as "gradually turns white".
+            var overlayGo = new GameObject("CollectWhiten");
+            overlayGo.transform.SetParent(transform, false);
+            var overlay = overlayGo.AddComponent<SpriteRenderer>();
+            overlay.sprite = _sr != null ? _sr.sprite : null;
+            overlay.sortingOrder = (_sr != null ? _sr.sortingOrder : 10) + 1;
+            var silhouetteShader = Shader.Find("GUI/Text Shader");
+            if (silhouetteShader != null)
+                overlay.material = new Material(silhouetteShader);
+            overlay.color = new Color(1f, 1f, 1f, 0f);
+
+            const float fadeTail = 0.2f; // last fraction: the now-white grenade fades away
+            float duration = EffectiveCollectAnimSeconds;
+            float t = 0f;
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / duration);
+                float whiten = Mathf.Clamp01(k / (1f - fadeTail));            // 0->1 over first 80%
+                float fade = Mathf.Clamp01((k - (1f - fadeTail)) / fadeTail); // 0->1 over last 20%
+                overlay.color = new Color(1f, 1f, 1f, whiten * (1f - fade));
+                if (_sr != null)
+                    _sr.color = new Color(1f, 1f, 1f, 1f - fade);
+                yield return null;
+            }
+            Destroy(gameObject);
         }
 
         private void Despawn()

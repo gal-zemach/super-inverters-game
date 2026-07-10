@@ -80,6 +80,10 @@ namespace Game.Powerups
             PruneDead();
             SpawnAtRandomX();
         }
+
+        // TESTING ONLY — live-tuning accessor for the debug fall-speed slider. Applies to
+        // the NEXT spawned pickup (changing it mid-flight would teleport an analytic fall).
+        public float FallSpeed { get => fallSpeed; set => fallSpeed = value; }
 #endif
 
         // Instantiate + init a pickup. In G4 this is the shared body invoked by RPCSpawnPowerup

@@ -75,63 +75,6 @@ namespace Game.Powerups
         [SerializeField] private Color trailColorBlack = new Color(0.12f, 0.12f, 0.12f, 0.85f);
         [SerializeField] private Color trailColorWhite = new Color(0.95f, 0.95f, 0.95f, 0.85f);
 
-#if UNITY_EDITOR
-        // TESTING ONLY — debug-slider overrides, compiled out of real builds. -1 = use the
-        // serialized value. The slider fallback constants in GrenadeDebugSpawner MUST match
-        // the serialized values in Grenade.prefab (the slider re-assigns these every frame).
-        public static float DebugBlinkHzOverride = -1f;
-        public static float DebugTrailLifetimeOverride = -1f;
-        public static float DebugTrailRateOverride = -1f;
-        public static float DebugFuseOverride = -1f;
-        // Diagnostic: forces the fuse light permanently lit, separating "renders but too
-        // subtle to notice while blinking" from "doesn't render at all".
-        public static bool DebugFuseLightAlwaysOn = false;
-#endif
-
-        private float EffectiveFuseSeconds
-        {
-            get
-            {
-#if UNITY_EDITOR
-                if (DebugFuseOverride > 0f) return DebugFuseOverride;
-#endif
-                return fuseSeconds;
-            }
-        }
-
-        private float BlinkHz
-        {
-            get
-            {
-#if UNITY_EDITOR
-                if (DebugBlinkHzOverride > 0f) return DebugBlinkHzOverride;
-#endif
-                return fuseLightBlinksPerSecond;
-            }
-        }
-
-        private float TrailLifetime
-        {
-            get
-            {
-#if UNITY_EDITOR
-                if (DebugTrailLifetimeOverride > 0f) return DebugTrailLifetimeOverride;
-#endif
-                return trailParticleLifetime;
-            }
-        }
-
-        private float TrailRate
-        {
-            get
-            {
-#if UNITY_EDITOR
-                if (DebugTrailRateOverride >= 0f) return DebugTrailRateOverride;
-#endif
-                return trailParticlesPerSecond;
-            }
-        }
-
         private Rigidbody2D _rb;
         private Framework _framework = Framework.BLACK;
         private float _fuseRemaining;
@@ -142,10 +85,11 @@ namespace Game.Powerups
         private SpriteRenderer _fuseLight;
         private ParticleSystem _trail;
 
-        // White glow with a soft radial falloff, generated once — no asset dependency for
-        // the fuse flash. Solid core to ~75% radius, then fades to transparent at the edge.
+        // White glow with a soft radial falloff, generated once — no asset dependency.
+        // Solid core to ~75% radius, then fades to transparent at the edge. Shared: the
+        // fuse LED here and GrenadePickup's collect flash both use it.
         private static Sprite s_lightSprite;
-        private static Sprite LightSprite
+        public static Sprite GlowSprite
         {
             get
             {
@@ -209,7 +153,7 @@ namespace Game.Powerups
             _rb = GetComponent<Rigidbody2D>();
             _rb.gravityScale = grenadeGravityScale;
             _platformLayersMask = LayerMask.GetMask("platforms_black", "platforms_grey", "platforms_white");
-            _fuseRemaining = EffectiveFuseSeconds;
+            _fuseRemaining = fuseSeconds;
         }
 
         // Local launch (G1). framework = the colour the detonation will paint;
@@ -217,7 +161,7 @@ namespace Game.Powerups
         public void Init(Framework framework, Vector2 initialVelocity)
         {
             _framework = framework;
-            _fuseRemaining = EffectiveFuseSeconds;
+            _fuseRemaining = fuseSeconds;
             if (_rb == null) _rb = GetComponent<Rigidbody2D>();
             _rb.gravityScale = grenadeGravityScale;
             _rb.linearVelocity = initialVelocity;
@@ -251,7 +195,7 @@ namespace Game.Powerups
             go.transform.localPosition = fuseLightOffset;
             go.transform.localScale = Vector3.one * fuseLightSize;
             _fuseLight = go.AddComponent<SpriteRenderer>();
-            _fuseLight.sprite = LightSprite;
+            _fuseLight.sprite = GlowSprite;
             _fuseLight.color = new Color(1f, 1f, 1f, fuseLightAlpha);
             _fuseLight.sortingOrder = 12; // flash IN FRONT of the grenade sprite (order 10)
         }
@@ -269,13 +213,13 @@ namespace Game.Powerups
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.startSpeed = 0f;
             main.gravityModifier = 0f;
-            main.startLifetime = TrailLifetime;
+            main.startLifetime = trailParticleLifetime;
             main.startSize = trailParticleSize;
             main.startColor = _framework == Framework.WHITE ? trailColorWhite : trailColorBlack;
             main.maxParticles = 500;
 
             var emission = _trail.emission;
-            emission.rateOverTime = TrailRate;
+            emission.rateOverTime = trailParticlesPerSecond;
 
             var shape = _trail.shape;
             shape.enabled = false;
@@ -300,7 +244,7 @@ namespace Game.Powerups
             if (_trail == null) return;
             _trail.transform.SetParent(null);
             _trail.Stop(true, ParticleSystemStopBehavior.StopEmitting);
-            Destroy(_trail.gameObject, TrailLifetime + 0.5f);
+            Destroy(_trail.gameObject, trailParticleLifetime + 0.5f);
             _trail = null;
         }
 
@@ -311,13 +255,7 @@ namespace Game.Powerups
             _fuseRemaining -= Time.deltaTime;
             _aliveTime += Time.deltaTime;
             if (_fuseLight != null)
-            {
-                bool lit = (int)(_aliveTime * BlinkHz * 2f) % 2 == 0;
-#if UNITY_EDITOR
-                lit |= DebugFuseLightAlwaysOn;
-#endif
-                _fuseLight.enabled = lit;
-            }
+                _fuseLight.enabled = (int)(_aliveTime * fuseLightBlinksPerSecond * 2f) % 2 == 0;
             if (_fuseRemaining <= 0f) Detonate();
         }
 
