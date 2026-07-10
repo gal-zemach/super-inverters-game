@@ -248,9 +248,9 @@ Follow the repo's vertical-slice convention (see "Planned multiplayer integratio
 
 ## 9. Test plan (2-peer ParrelSync, per AGENT_CONTEXT technique — Editor.log grep works when MCP is down)
 
-- [ ] Pickup falls identically on both peers (visually compare Y at same wall-clock moment).
-- [ ] Simultaneous grab race: both players stand in the fall path → exactly ONE gets it, pickup vanishes on both peers.
-- [ ] Throw on peer A: peer B sees ghost arc + explosion at the same final position; painted platforms identical on both (walk both players onto a painted platform — no fall-through on either editor: the real desync detector in this game).
+- [x] Pickup falls identically on both peers (visually compare Y at same wall-clock moment).
+- [x] Simultaneous grab race: both players stand in the fall path → exactly ONE gets it, pickup vanishes on both peers.
+- [x] Throw on peer A: peer B sees ghost arc + explosion at the same final position; painted platforms identical on both (walk both players onto a painted platform — no fall-through on either editor: the real desync detector in this game).
 - [ ] Radius correctness: platforms partially inside radius get painted; platforms outside don't.
 - [ ] Bounce decay visibly tunable: retention 1.0 vs 0.4 comparison.
 - [ ] Fuse in pause: pause mid-flight → grenade freezes, resumes correctly.

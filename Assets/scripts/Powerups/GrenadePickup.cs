@@ -45,28 +45,6 @@ namespace Game.Powerups
         [Tooltip("World-space size of each orb.")]
         [SerializeField] private float convergeOrbSize = 0.7f;
 
-#if UNITY_EDITOR
-        // TESTING ONLY — compiled out of real builds. When > 0, overrides the prefab's
-        // CircleCollider2D radius on every live pickup (debug slider, applied in Update so
-        // it tunes pickups already falling). Prefab-baked value: 0.25 (×6 scale = 1.5 world).
-        public static float DebugColliderRadiusOverride = -1f;
-        // When > 0, overrides collectAnimSeconds for the next collection (debug slider;
-        // fallback constant in GrenadeDebugSpawner MUST match the serialized default).
-        public static float DebugCollectAnimOverride = -1f;
-        private CircleCollider2D _debugCollider;
-#endif
-
-        private float EffectiveCollectAnimSeconds
-        {
-            get
-            {
-#if UNITY_EDITOR
-                if (DebugCollectAnimOverride > 0f) return DebugCollectAnimOverride;
-#endif
-                return collectAnimSeconds;
-            }
-        }
-
         private SpriteRenderer _sr;
         private int _pickupId;
         private double _spawnTime;
@@ -98,13 +76,6 @@ namespace Game.Powerups
         private void Update()
         {
             if (_collected) return;
-#if UNITY_EDITOR
-            if (DebugColliderRadiusOverride > 0f)
-            {
-                if (_debugCollider == null) _debugCollider = GetComponent<CircleCollider2D>();
-                if (_debugCollider != null) _debugCollider.radius = DebugColliderRadiusOverride;
-            }
-#endif
             ApplyFallPosition();
             ApplyPulse();
             if (spinDegPerSecond != 0f)
@@ -184,7 +155,7 @@ namespace Game.Powerups
             GameObject convergeGo = CreateConvergeOrbs();
 
             const float fadeTail = 0.2f; // last fraction: the now-white grenade fades away
-            float duration = EffectiveCollectAnimSeconds;
+            float duration = collectAnimSeconds;
             float t = 0f;
             while (t < duration)
             {
