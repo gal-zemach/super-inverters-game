@@ -42,6 +42,7 @@ namespace Game.Powerups
         private GrenadeThrower _thrower;
         private LineRenderer _beam;
         private float _heldTime;
+        private bool _suppressUntilRelease;
         private Vector2 _lastAimDir = Vector2.right;
 
         private void Awake()
@@ -58,12 +59,34 @@ namespace Game.Powerups
         private bool CanAim =>
             IsLocal
             && _inventory.HasGrenade
+            && !_thrower.HasAirborne
             && !GameManager.CountdownActive
             && !GameManager.LocalPauseActive
             && (_player == null || !_player.ControlsDisabled);
 
         private void Update()
         {
+            // Mid-air detonate: while a grenade is airborne, G means "detonate", never
+            // "charge" — CanAim is false the whole flight (HasAirborne gate), and the
+            // detonating press is swallowed until release so it can't start a new charge
+            // the instant the airborne list empties.
+            bool canAct = IsLocal
+                && !GameManager.CountdownActive
+                && !GameManager.LocalPauseActive
+                && (_player == null || !_player.ControlsDisabled);
+            if (canAct && PressedDown() && _thrower.HasAirborne)
+            {
+                _thrower.DetonateAirborne();
+                _suppressUntilRelease = true;
+            }
+            if (_suppressUntilRelease)
+            {
+                if (Released()) _suppressUntilRelease = false;
+                _heldTime = 0f;
+                if (_beam.enabled) _beam.enabled = false;
+                return;
+            }
+
             if (!CanAim)
             {
                 _heldTime = 0f;
@@ -92,6 +115,10 @@ namespace Game.Powerups
         }
 
         private float Charge01 => Mathf.Clamp01(_heldTime * chargeRampPerSecond);
+
+        private bool PressedDown() =>
+            Input.GetKeyDown(throwKey) ||
+            (!string.IsNullOrEmpty(throwButton) && Input.GetButtonDown(throwButton));
 
         private bool Held() =>
             Input.GetKey(throwKey) ||

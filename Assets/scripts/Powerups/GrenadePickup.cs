@@ -23,15 +23,16 @@ namespace Game.Powerups
         [SerializeField] private float despawnY = -25f;
 
         [Header("Cosmetic")]
-        [Tooltip("Heartbeat pulse: fraction of the base scale the pickup grows/shrinks by " +
-                 "as it breathes (0.2 = pulses between 80% and 120% of its size). 0 = no pulse.")]
-        [SerializeField] private float pulseAmplitude = 0.2f;
-        [Tooltip("Heartbeat pulses per second.")]
+        [Tooltip("Brightness pulse floor: the sprite tint oscillates between this grey level " +
+                 "and full brightness (1). Sprite tints can only darken, so 'brighter' is " +
+                 "faked by breathing up from a dimmed baseline.")]
+        [SerializeField] private float pulseBrightnessMin = 0.55f;
+        [Tooltip("Brightness pulses per second.")]
         [SerializeField] private float pulseSpeed = 1.5f;
         [Tooltip("Optional spin while falling (deg/sec). 0 = no spin.")]
         [SerializeField] private float spinDegPerSecond = 0f;
 
-        private Vector3 _baseScale = Vector3.one;
+        private SpriteRenderer _sr;
         private int _pickupId;
         private double _spawnTime;
         private float _spawnTopY;
@@ -46,7 +47,7 @@ namespace Game.Powerups
         private static double NetworkNow =>
             PhotonNetwork.InRoom ? PhotonNetwork.Time : Time.timeAsDouble;
 
-        private void Awake() => _baseScale = transform.localScale;
+        private void Awake() => _sr = GetComponent<SpriteRenderer>();
 
         // Injected by PowerupSpawner at spawn.
         public void Init(int pickupId, float spawnTopY, double spawnTime, float fallSpeed, PowerupSpawner owner)
@@ -70,13 +71,14 @@ namespace Game.Powerups
                 Despawn();
         }
 
-        // Heartbeat: scale breathes around the base scale. Scaled time on purpose so a
-        // synced pause freezes the pulse too.
+        // Brightness heartbeat: tint oscillates dim -> full -> dim. Scaled time on purpose
+        // so a synced pause freezes the pulse too.
         private void ApplyPulse()
         {
-            if (pulseAmplitude <= 0f) return;
-            float s = 1f + pulseAmplitude * Mathf.Sin(Time.time * pulseSpeed * 2f * Mathf.PI);
-            transform.localScale = _baseScale * s;
+            if (_sr == null) return;
+            float wave = 0.5f + 0.5f * Mathf.Sin(Time.time * pulseSpeed * 2f * Mathf.PI);
+            float b = Mathf.Lerp(pulseBrightnessMin, 1f, wave);
+            _sr.color = new Color(b, b, b, 1f);
         }
 
         // Analytic descent: y = spawnTopY - elapsed * fallSpeed. Deterministic across peers

@@ -72,6 +72,16 @@ namespace Game.Powerups
             SpawnPickup(pickupId, spawnX, NetworkNow);
         }
 
+#if UNITY_EDITOR
+        // TESTING ONLY — compiled out of real builds. Drops a pickup from the sky right now
+        // (the debug 'H' key), ignoring the interval and the concurrency cap.
+        public void DebugSpawnNow()
+        {
+            PruneDead();
+            SpawnAtRandomX();
+        }
+#endif
+
         // Instantiate + init a pickup. In G4 this is the shared body invoked by RPCSpawnPowerup
         // on every peer, so the fall is identical across peers.
         public void SpawnPickup(int pickupId, float spawnX, double spawnTime)

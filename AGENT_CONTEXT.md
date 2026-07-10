@@ -149,6 +149,56 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-10 (session 2) — "Grenade Juice": sprite, spin, mid-air detonate, LED fuse light, trail, 2-pack pickups, HUD
+
+**Agent session goal:** Real grenade sprite + a juice pass on the whole mechanic, driven by
+live playtest iterations with the user.
+
+**Shipped (single commit `Grenade Juice`):**
+- **Sprite:** user-supplied grenade art imported as `Assets/Graphics/Sprites/grenade.png`
+  (35×43, PPU 100, point filter; meta GUID authored by agent: `5d7cbea2dc284b4fa10088b7205e59e1`).
+  Wired into `Grenade.prefab` (magenta Knob placeholder gone) AND `GrenadePickup.prefab`.
+- **Physics juice:** random tumble on throw (`spinDegPerSecMin/Max` 180–540°/s opposite the
+  throw direction, ±25° initial tilt); spin decays with `bounceVelocityRetention` on bounces.
+- **Mid-air detonate:** pressing G with a grenade airborne detonates it (`GrenadeThrower.
+  DetonateAirborne` + `HasAirborne`). While airborne you CANNOT charge a new throw (CanAim
+  gate) and the detonating press is swallowed until key-up. Ghost follows via the usual RPC.
+- **Fuse LED:** small white blinking dot (~8 screen px, `fuseLightSize` 0.85, offset near cap,
+  sorting order 12, code-generated soft-circle sprite) on the armed grenade; blink 1.5/s.
+- **Trail:** world-space ParticleSystem on the grenade — square particles, zero gravity/speed,
+  thrower-coloured (near-black for Black / near-white for White — MID-GREY IS INVISIBLE against
+  the grey city background), 0.45s decay, 40/s; detaches on death to finish fading.
+- **Pickups grant 2:** `GrenadeInventory` is count-based (`grenadesPerPickup` 2); can't collect
+  while still holding. Pickup visual = grenade sprite with a brightness pulse (tint breathes
+  0.55→1; sprite tints can only darken, so "brighter" = up from a dimmed baseline).
+- **HUD:** `ShootCooldownHud` now draws one grenade icon per held grenade under the lives row
+  (44px invisible-box spacing); the burst-ammo bar is hidden via new `showBurstBar=false`
+  (layout still anchors the icons).
+- **Debug tooling re-added, ALL `#if UNITY_EDITOR`** (compiled out of builds — this was the
+  user's requirement): H-key pickup drop, always-have-grenade toggle (warns it makes pickups
+  no-op), sliders for fuse (2.31 baked), blink (1.5 baked), trail decay/amount (0.45/40 baked),
+  and a "fuse light always ON" visibility-test toggle.
+
+**HARD-WON GOTCHAS (do not relearn):**
+- **The user's Editor defers recompiles until it regains focus.** MCP `refresh_unity`,
+  `RequestScriptCompilation`, even Play-mode entry did NOT swap the assembly while unfocused —
+  several "bug reports" were stale-assembly tests. Freshness marker trick: point the user at a
+  UI element that only exists in the new code.
+- **Two Unity instances = MCP routes to "most recent"** (was the ParrelSync clone!). Pin with
+  `set_active_instance` (main = `super-inverters-game@646d1cbe`); instance list is visible in
+  `~/Library/Application Support/UnityMCP/Logs/unity_mcp_server.log`.
+- **The in-play arena background is a full-greyscale cityscape** (edit-mode renders show black
+  — background art builds at runtime). Any single grey tone vanishes against it somewhere; the
+  camera shows ~70 world units, so anything under ~0.5 world units is sub-8px on screen.
+- Render-to-RenderTexture via `execute_code` works headless for visual verification (screenshots
+  in scratchpad); `ps.Simulate()` to pre-warm particles; clean up strays (failed exec attempts
+  leave instantiated objects in the open scene).
+
+**Next agent should:** (1) **G4** — master-authoritative pickup spawn + claim (pickups still
+per-peer, peers see different drops; `PowerupSpawner.SpawnPickup` seam ready); (2) G6 — real
+pickup/explosion polish, `ClearAllPickups` end-game wiring, strip debug tooling again, CC-BY
+attribution line (explosion sound) on the itch page; (3) user pushes the branch.
+
 ### 2026-07-10 — G5 COMPLETE & 2-peer playtested (ghost + explosion FX/SFX); tuning baked
 
 **Agent session goal:** Act on the user's live-testing feedback: tuning tweaks + sliders,

@@ -27,6 +27,7 @@ namespace Game.Powerups
         private PhotonView _pv;
         private int _nextGrenadeId;
         private readonly Dictionary<int, GrenadeProjectile> _ghosts = new Dictionary<int, GrenadeProjectile>();
+        private readonly List<GrenadeProjectile> _liveOwned = new List<GrenadeProjectile>();
 
         private void Awake()
         {
@@ -36,6 +37,17 @@ namespace Game.Powerups
 
         private Framework ThrowerFramework =>
             _playerState != null ? _playerState.player_framework : Framework.BLACK;
+
+        // Sprite of the grenade prefab — used by the HUD for the grenade-count icons.
+        public Sprite GrenadeSprite
+        {
+            get
+            {
+                if (grenadePrefab == null) return null;
+                var sr = grenadePrefab.GetComponent<SpriteRenderer>();
+                return sr != null ? sr.sprite : null;
+            }
+        }
 
         // dir must be normalized; force is world units/sec.
         public void Throw(Vector2 dir, float force)
@@ -51,6 +63,7 @@ namespace Game.Powerups
 
             GrenadeProjectile g = Instantiate(grenadePrefab, spawnPos, Quaternion.identity);
             g.Init(ThrowerFramework, velocity);
+            _liveOwned.Add(g);
 
             if (PhotonNetwork.InRoom && _pv != null)
             {
@@ -60,6 +73,31 @@ namespace Game.Powerups
                 // fuse matches what the owner's grenade will actually do.
                 _pv.RPC(nameof(RPCSpawnGhostGrenade), RpcTarget.Others,
                         grenadeId, spawnPos, velocity, g.FuseSecondsAtSpawn);
+            }
+        }
+
+        // True while any grenade this player threw is still flying. Gates throwing: one
+        // airborne grenade at a time, and G detonates instead of charging.
+        public bool HasAirborne
+        {
+            get
+            {
+                for (int i = _liveOwned.Count - 1; i >= 0; i--)
+                    if (_liveOwned[i] == null) _liveOwned.RemoveAt(i);
+                return _liveOwned.Count > 0;
+            }
+        }
+
+        // Juice: pressing the throw key again while grenades are airborne detonates them
+        // immediately. The remote ghost follows automatically — Detonate() ends in the
+        // usual NotifyOwnerDetonated RPC.
+        public void DetonateAirborne()
+        {
+            for (int i = _liveOwned.Count - 1; i >= 0; i--)
+            {
+                GrenadeProjectile g = _liveOwned[i];
+                _liveOwned.RemoveAt(i);
+                if (g != null) g.ForceDetonate();
             }
         }
 
