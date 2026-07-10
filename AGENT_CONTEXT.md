@@ -164,6 +164,24 @@ no accumulation). GOTCHA: a duplicate converge field block appeared in GrenadePi
 PARALLEL edit (user-side IDE/AI?) causing CS0102 — if fields duplicate mysteriously, check for
 that channel before blaming yourself.
 
+**Slice score after this session:** G1–G3 ✓, G5 ✓ (2-peer playtested), G6 ~95% ✓ (absorbed
+piecemeal: sprite, HUD, FX/SFX, debug strip). **G4 is the ONLY remaining slice.**
+
+**Next agent should (G4 kickoff):**
+1. **G4 per spec §3.3/§8** — master-authoritative pickup spawn + claim. Currently each peer
+   runs `PowerupSpawner`'s local timer independently → peers see DIFFERENT drops. Master picks
+   (pickupId, spawnX, PhotonNetwork.Time) → `RPCSpawnPowerup` (All) → every peer calls the
+   existing `SpawnPickup(pickupId, spawnX, spawnTime)` (fall is already analytic off
+   PhotonNetwork.Time — deterministic across peers). Claim: `RPCClaimPowerup` (MasterClient)
+   → `RPCResolvePowerup` (All); copy the kill-flow RPC shape in GameManager. Only the master's
+   scheduler runs (`PhotonNetwork.IsMasterClient` gate in PowerupSpawner.Update).
+2. Fold into G4's first commit: wire `PowerupSpawner.ClearAllPickups()` into the end-game path
+   (built in G3, never wired — pickups linger on the end screen).
+3. Re-add a debug H-key drop (editor-only) if needed for testing — the full tooling was
+   stripped in 129684c2; resurrect from that commit's parent.
+4. At next itch publish: CC-BY credit — Explosion sound: "Big Explosion" by Blender Foundation
+   (opengameart.org/content/big-explosion), CC-BY 3.0.
+
 ### 2026-07-10 (session 3) — Pickup collect flash + focused debug panel
 
 **Shipped (commit after the Grenade Juice one):**
