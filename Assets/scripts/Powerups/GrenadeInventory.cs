@@ -3,19 +3,25 @@ using UnityEngine;
 namespace Game.Powerups
 {
     // Grenade inventory on the player. Only meaningful on the local avatar; remote avatars
-    // never read it. A collected pickup TOPS UP to a full pack (grenadesPerPickup throws):
-    // collectable at any count below max, ignored only when already full — so pickups
-    // refresh your ammo but never accumulate beyond the cap.
+    // never read it. Economy (2026-07-11): every player STARTS with a full pack
+    // (startingGrenades), a collected pickup ADDS grenadesPerPickup clamped to maxGrenades
+    // (1 held -> 3, 2 held -> 3), and a full player can't collect at all — pickups never
+    // accumulate beyond the cap.
     public class GrenadeInventory : MonoBehaviour
     {
-        [Tooltip("Grenades granted per pickup collected.")]
+        [Tooltip("Grenades granted per pickup collected (clamped to Max grenades).")]
         [SerializeField] private int grenadesPerPickup = 2;
 
+        [Tooltip("Hard cap on grenades held.")]
+        [SerializeField] private int maxGrenades = 3;
+
+        [Tooltip("Grenades each player holds at match start.")]
+        [SerializeField] private int startingGrenades = 3;
+
 #if UNITY_EDITOR
-        // TESTING ONLY — this whole block is compiled out of real builds. Start with a full
-        // pack and refill after it empties. NOTE: while this is ON, walking into a pickup is
-        // a no-op (you always hold grenades) — turn it OFF (debug overlay toggle) to test
-        // collection.
+        // TESTING ONLY — this whole block is compiled out of real builds. Refill after the
+        // pack empties. NOTE: while this is ON, walking into a pickup with a full pack is
+        // a no-op — turn it OFF (debug overlay toggle) to test collection.
         [Header("Debug (Editor only)")]
         [SerializeField] private bool debugAlwaysHaveGrenade = true;
 
@@ -25,13 +31,8 @@ namespace Game.Powerups
             set
             {
                 debugAlwaysHaveGrenade = value;
-                if (value && Count <= 0) Count = grenadesPerPickup;
+                if (value && Count <= 0) Count = maxGrenades;
             }
-        }
-
-        private void Start()
-        {
-            if (debugAlwaysHaveGrenade) Count = grenadesPerPickup;
         }
 #endif
 
@@ -39,12 +40,17 @@ namespace Game.Powerups
 
         public bool HasGrenade => Count > 0;
 
-        // Tops the inventory up to a full pack. Returns false only when already full, so
-        // callers can tell whether the grant actually landed.
+        private void Start()
+        {
+            Count = Mathf.Min(startingGrenades, maxGrenades);
+        }
+
+        // Adds a pickup's worth of grenades, clamped to the cap. Returns false only when
+        // already full, so callers can tell whether the grant actually landed.
         public bool Grant()
         {
-            if (Count >= grenadesPerPickup) return false;
-            Count = grenadesPerPickup;
+            if (Count >= maxGrenades) return false;
+            Count = Mathf.Min(Count + grenadesPerPickup, maxGrenades);
             return true;
         }
 
@@ -52,7 +58,7 @@ namespace Game.Powerups
         {
             if (Count > 0) Count--;
 #if UNITY_EDITOR
-            if (debugAlwaysHaveGrenade && Count <= 0) Count = grenadesPerPickup;
+            if (debugAlwaysHaveGrenade && Count <= 0) Count = maxGrenades;
 #endif
         }
     }

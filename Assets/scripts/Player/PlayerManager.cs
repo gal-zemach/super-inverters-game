@@ -17,10 +17,17 @@ namespace Game{
 		private Controller[] controllers;
 		private MouseAimController _mouseAim;
 		
-		[SerializeField] 
+		[SerializeField]
 		public bool EnableSFX = false;
-		
+
 		private PlayerSFX _sfx;
+
+#if UNITY_EDITOR
+		// Sound-dropout probe: shots that reached the SFX call site. Compared against
+		// PlayerSFX.DebugShootCalls in the debug panel — shots ticking while calls
+		// freeze means the EnableSFX/_sfx gate below is eating the sound.
+		public static int DebugShotAttempts;
+#endif
 		
 
 		[Header("Physics")]
@@ -500,6 +507,15 @@ namespace Game{
 			_nextShootTime = Time.time + InterShotCooldownSeconds;
 
 			Vector2 pos = _rigidbody2D.position;
+#if UNITY_EDITOR
+			DebugShotAttempts++;
+			if (!EnableSFX)
+				Debug.LogWarning($"[AudioDebug] Shot fired on '{name}' with EnableSFX=false — sound gated off.");
+			else if (ReferenceEquals(_sfx, null))
+				Debug.LogWarning($"[AudioDebug] Shot fired on '{name}' but _sfx was never assigned (null).");
+			else if (_sfx == null)
+				Debug.LogWarning($"[AudioDebug] Shot fired on '{name}' but _sfx is DESTROYED — stale PlayerSFX reference.");
+#endif
 			if (EnableSFX) _sfx.PlayShoot();
 			float shooting_angle = direction.GetAngle();
 			_gameManager.SpawnShot(pos, _rigidbody2D.linearVelocity, shooting_angle, _playerState.player_framework);

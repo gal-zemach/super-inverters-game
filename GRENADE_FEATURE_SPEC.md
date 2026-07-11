@@ -254,9 +254,9 @@ Follow the repo's vertical-slice convention (see "Planned multiplayer integratio
 - [x] Radius correctness: platforms partially inside radius get painted; platforms outside don't.
 - [x] Bounce decay visibly tunable: retention 1.0 vs 0.4 comparison.
 - [x] Fuse in pause: pause mid-flight → grenade freezes, resumes correctly. *(2026-07-11: also verified pause → Back to Main Menu with a grenade mid-air exits cleanly on both peers — exit-race fix in GameManager.)*
-- [ ] Game over with grenade mid-air → no paint after verdict, no errors.
-- [ ] Rematch: spawner restarts fresh, no duplicate pickups, ids restart safely (registry cleared).
-- [ ] WebGL smoke build (`Scripts/build-webgl.sh`) still compiles — WebGL is the ship target.
+- [x] Game over with grenade mid-air → no paint after verdict, no errors.
+- [x] Rematch: spawner restarts fresh, no duplicate pickups, ids restart safely (registry cleared).
+- [x] WebGL smoke build (`Scripts/build-webgl.sh`) still compiles — WebGL is the ship target.
 
 ## 10. Out of scope (v1)
 

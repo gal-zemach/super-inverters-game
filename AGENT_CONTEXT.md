@@ -149,6 +149,72 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-11 (later) — Grenade feature WRAPPED; game-over-exit freeze fixed (native-deadlock workaround); §9 complete except G4 items; sound bug cornered
+
+**User declared the grenade feature DONE this session** (G4 master-authoritative pickups is
+still the open networking slice — pickups spawn per-peer; see the G4 kickoff plan below).
+
+**Game-over-exit editor freeze — root-caused & WORKED AROUND (user-verified, many clean exits):**
+- Symptom returned: "Back to Main Menu" from the game-over screen deterministically hard-froze
+  the CLICKING editor (other peer exited fine). Blocked at ~0% CPU = deadlock, not livelock.
+- This is the **documented Unity 6000.4-macOS native engine deadlock** (see 2026-05-23 entry:
+  main thread in `SpriteRenderer::MainThreadCleanup` on a mutex orphaned by a "prematurely
+  finalized" thread, downstream of synchronous `SceneManager.LoadScene`). It came back with
+  the 2026-06-19 return to 6.4.4 (6.3.16 had broken WebGL modules). Today's logs showed the
+  known precursor warning again.
+- **Workaround that holds:** `GameManager.LoadMainMenuScene` now defers the load 2 frames and
+  uses `LoadSceneAsync` from a `DontDestroyOnLoad` runner (`DeferredSceneLoader`, nested in
+  GameManager). Changes the thread/timing pattern the engine bug races on. If the freeze ever
+  recurs: `sample <pid>` BEFORE force-quitting; fallback plan = newer 6000.4.x editor patch.
+- Also fixed while chasing it (real managed races found in the frozen session's logs):
+  - **Receive-side exit gates:** `RPCReportKillToMaster` / `RPCApplyKillResult` /
+    `RPCRespawnWithoutScore` now early-return on `s_pendingExitToMainMenu` — a kill verdict
+    arriving mid-teardown used to run `endGame()`/`ForceRespawn()` (PhotonNetwork.Instantiate!)
+    against an in-flight LeaveRoom. (Send side was gated last session; receive side was the hole.)
+  - **PlatformManager exception storm on exit:** platforms that ran the synced in-room path
+    fell back to LOCAL motion with stale `reverse_dir` when InRoom flipped false at teardown →
+    `ArgumentOutOfRangeException` every FixedUpdate. New `_usedSyncedMotion` flag freezes them
+    in place instead ("once synced, stay synced-or-still").
+
+**Game-over now freezes the world like pause (user request):** `endGame()` sets
+`Time.timeScale = 0` at the verdict (grenade hangs mid-air, can never paint after game over —
+§9 item). Menu reveal uses `WaitForSecondsRealtime`; end-menu title Animator runs
+`UnscaledTime`; BOTH replay paths call `RestoreGameplayTimeScale()` and `GameManager.Awake`
+resets timeScale to 1 (timeScale survives scene loads). PUN dispatch at timeScale 0 already
+handled (`MinimalTimeScaleToDispatchInFixedUpdate = 1` in Awake).
+
+**Grenade economy (user request):** start with 3, cap 3, pickup +2 clamped (1→3, 2→3, full →
+pickup ignored & keeps falling). Serialized fields `startingGrenades`/`maxGrenades`/
+`grenadesPerPickup` in `GrenadeInventory`; prefabs untouched (C# defaults). HUD scales itself.
+
+**§9 status:** game-over-mid-air ✓, rematch ✓, WebGL smoke build ✓ (headless
+`Scripts/build-webgl.sh` → Success, ~100 MB, debug kit compiled out). Remaining: the two
+G4-dependent items (falls-identically, grab-race).
+
+**Runtime sound bug — not fixed but CORNERED (evidence chain):**
+1. At dropout: 0 virtual voices, listener unpaused, boom sometimes unaffected → NOT the mixer.
+2. **Replay fixes it** → broken state lives in scene objects, NOT editor/OS audio.
+3. Local Shoot source read `vol=1.00` during dropout (PlayShoot stamps 0.22 every call) and
+   ZERO `[AudioDebug]` warnings logged → **`PlayShoot` is never being CALLED during dropout**,
+   while bullets still fire. The whole bug is now pinned to `PlayerManager.cs` ~line 503:
+   `if (EnableSFX) _sfx.PlayShoot();`.
+4. Instrumentation in place (all `#if UNITY_EDITOR`): debug panel Audio section shows
+   `shots=` (PlayerManager.DebugShotAttempts) vs `sfxCalls=` (PlayerSFX.DebugShootCalls) +
+   last-call frame + instance-id MATCH/STALE + EnableSFX + player/mine counts + voice census;
+   call site logs a 3-way `[AudioDebug]` warning naming the culprit (EnableSFX false /
+   `_sfx` never assigned / `_sfx` DESTROYED). **Next repro: read the panel bottom line +
+   console warning — that's the verdict.** Clue: user says only the MAIN editor ever gets it
+   (editors aren't symmetric: master role; respawns run on the victim's editor).
+
+**Housekeeping:** clone_5 → **clone_6** (fresh ParrelSync copy after a freeze force-quit).
+Debug kit (panel/probes/H-key) is KEPT for the sound hunt — all editor-only, compiled out of
+builds; strip whenever wanted. `Web build/Build/*` payloads are gitignored; only small
+template files are tracked.
+
+**Next agent should:** (1) G4 per the session-4 kickoff plan below (+ wire `ClearAllPickups`
+into end-game); (2) re-run the two G4-dependent §9 items; (3) close the sound bug via the
+panel verdict on next repro.
+
 ### 2026-07-11 — Pause-exit crash FIXED & verified; §9 test plan mostly done; sound bug still open
 
 **Agent session goal:** Re-orient after a day away; verify the pause-exit fix from the

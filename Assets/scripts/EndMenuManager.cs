@@ -110,7 +110,10 @@ public class EndMenuManager : MonoBehaviour
 	public void setAnimation(int playerId) {
 		if (titleAnimator == null)
 			return;
-		
+
+		// Game over freezes Time.timeScale (grenades must hang mid-air, like pause);
+		// the win word-art still has to animate, so run this animator on unscaled time.
+		titleAnimator.updateMode = AnimatorUpdateMode.UnscaledTime;
 		titleAnimator.SetInteger("winId", playerId);
 	}
 

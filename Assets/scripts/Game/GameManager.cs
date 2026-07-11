@@ -122,6 +122,10 @@ namespace Game {
 			// PUN default (-1) does not dispatch in LateUpdate when timeScale==0,
 			// so pause/resume RPCs never reach the still-paused peer.
 			PhotonNetwork.MinimalTimeScaleToDispatchInFixedUpdate = 1f;
+
+			// Safety net: game-over freezes timeScale to 0 and Time.timeScale
+			// survives scene loads — a match scene must always start unfrozen.
+			Time.timeScale = 1f;
 		}
 
 		private void Start()
@@ -497,6 +501,9 @@ namespace Game {
 		[PunRPC]
 		private void RPCReportKillToMaster(string killedPlayerName)
 		{
+			// Receive-side twin of the PlayerKilled gate: a kill report landing while
+			// this peer is tearing down for exit-to-menu must not be processed.
+			if (s_pendingExitToMainMenu) return;
 			if (!PhotonNetwork.IsMasterClient) return;
 			if (_matchOver) return;  // ignore a near-simultaneous second final kill
 			if (CountdownActive)
@@ -530,6 +537,13 @@ namespace Game {
 		[PunRPC]
 		private void RPCApplyKillResult(string killedPlayerName, int remainingLives, int winPlayerId)
 		{
+			// The send side (PlayerKilled) is gated, but a result broadcast by the
+			// OTHER peer can still arrive while we are mid-exit-teardown. Applying
+			// it then runs endGame() over a half-destroyed scene or ForceRespawn()
+			// (PhotonNetwork.Instantiate) against an in-flight LeaveRoom — this
+			// froze the editor (2026-07-11). We're leaving; the result is moot.
+			if (s_pendingExitToMainMenu) return;
+
 			_gameState.setScore(killedPlayerName, remainingLives);
 			_gameView.decreaseScore(killedPlayerName); // animated -1 life
 			_gameView.updateScore();                   // hard-correct any drift to the authoritative count
@@ -552,6 +566,9 @@ namespace Game {
 		[PunRPC]
 		private void RPCRespawnWithoutScore(string killedPlayerName)
 		{
+			// Same exit-teardown gate as RPCApplyKillResult: never respawn
+			// (PhotonNetwork.Instantiate) while LeaveRoom is in flight.
+			if (s_pendingExitToMainMenu) return;
 			HandleMultiplayerRoundDeath(killedPlayerName);
 		}
 
@@ -746,6 +763,7 @@ namespace Game {
 		public void RequestNetworkedReplay()
 		{
 			DismissEndGamePresentation();
+			RestoreGameplayTimeScale(); // game-over freezes timeScale; unfreeze before reload
 			if (PhotonNetwork.InRoom && photonView != null)
 			{
 				photonView.RPC(nameof(RPCReplayMatch), RpcTarget.All);
@@ -760,6 +778,7 @@ namespace Game {
 		private void RPCReplayMatch()
 		{
 			DismissEndGamePresentation();
+			RestoreGameplayTimeScale(); // game-over freezes timeScale; unfreeze before reload
 			PrepareScoresForRematch();
 			roundEnded = false;
 			ReloadMatchScene();
@@ -841,12 +860,48 @@ namespace Game {
 				_pause_menu.SetActive(false);
 		}
 
+		// Deadlock experiment (2026-07-11): the synchronous LoadScene here is where the
+		// documented Unity 6000.4-macOS native deadlock strikes on the game-over → exit
+		// path (main thread hangs in SpriteRenderer::MainThreadCleanup on a mutex
+		// orphaned by a "prematurely finalized" engine thread — see AGENT_CONTEXT
+		// 2026-05-23). Deferring the load two frames past the Photon teardown and using
+		// LoadSceneAsync changes the thread/timing pattern the engine bug races on.
+		// If the freeze persists, the fallback is a newer 6000.4.x editor patch.
+		private static GameObject s_menuLoadRunner;
+
 		private static void LoadMainMenuScene()
 		{
 			s_matchStartCountdownPlayed = false;
 			s_pendingExitToMainMenu = false;
 			CountdownActive = false;
-			SceneManager.LoadScene(MainMenuSceneName);
+			if (s_menuLoadRunner != null) return; // a load is already in flight
+			s_menuLoadRunner = new GameObject("MainMenuLoadRunner");
+			Object.DontDestroyOnLoad(s_menuLoadRunner);
+			s_menuLoadRunner.AddComponent<DeferredSceneLoader>().Load(MainMenuSceneName);
+		}
+
+		// Survives the scene swap (DontDestroyOnLoad) so the async load can't lose its
+		// coroutine host mid-flight; destroys itself once the menu scene is active.
+		private class DeferredSceneLoader : MonoBehaviour
+		{
+			private string _sceneName;
+
+			public void Load(string sceneName)
+			{
+				_sceneName = sceneName;
+				StartCoroutine(Run());
+			}
+
+			private IEnumerator Run()
+			{
+				yield return null; // let the teardown frame fully finish
+				yield return null; // +1 spare for delayed destroys/finalizers
+				AsyncOperation op = SceneManager.LoadSceneAsync(_sceneName);
+				while (op != null && !op.isDone)
+					yield return null;
+				s_menuLoadRunner = null;
+				Destroy(gameObject);
+			}
 		}
 
 		private void DismissEndGamePresentation()
@@ -892,15 +947,21 @@ namespace Game {
 		{
 			CountdownActive = false;
 			SetLocalPlayerGameplayEnabled(true);
+			// Freeze the world at the verdict, same as the synced pause: a grenade
+			// mid-air hangs where it is and can never detonate/paint after game over
+			// (§9). RPCs still flow at timeScale 0 (MinimalTimeScaleToDispatchInFixedUpdate
+			// is set in Awake), the end-menu animator runs unscaled, and every way off
+			// the end menu (replay/exit) restores timeScale.
+			Time.timeScale = 0f;
 			IEnumerator couroutine = waitThenEndGame(winPlayerId);
 			StartCoroutine(couroutine);
 			Destroy(_gameState.scoreKeeper.gameObject); // so the scores don't stay for the next level
 		}
-		
+
 		IEnumerator waitThenEndGame(int winPlayerId)
 		{
-			yield return new WaitForSeconds(secondsToNewRound);
-			Time.timeScale = 1f;
+			// Realtime: scaled time is frozen (see endGame), the menu must still appear.
+			yield return new WaitForSecondsRealtime(secondsToNewRound);
 			SetLocalPlayerGameplayEnabled(false);
 			_endGameMenu.SetActive(true);
 			EndMenuManager menuManager = _endGameMenu.GetComponent<EndMenuManager>();

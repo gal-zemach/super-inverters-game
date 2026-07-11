@@ -195,8 +195,17 @@ namespace Game{
 				transform.position = pos;
 		}
 
+		// Set once the platform has been driven by the epoch-synced path. The synced
+		// path writes current/target indices directly and never maintains reverse_dir,
+		// so falling back to the LOCAL path afterwards (InRoom flips false during
+		// exit-to-menu teardown) walks target_point_idx off the end of the points
+		// list — an ArgumentOutOfRangeException every FixedUpdate until the scene
+		// unloads. Once synced, stay synced-or-still.
+		private bool _usedSyncedMotion;
+
 		private void ApplyMultiplayerSyncedPosition()
 		{
+			_usedSyncedMotion = true;
 			int numPaths = (points.Count - 1) * 2;
 			if (numPaths <= 0 || segment_period <= 0f) return;
 			double cyclePeriod = segment_period * numPaths;
@@ -215,6 +224,7 @@ namespace Game{
 				ApplyMultiplayerSyncedPosition();
 				return;
 			}
+			if (_usedSyncedMotion) return; // freeze in place after leaving a room (teardown)
 			float path_percentage = GetPathPercentage();
 			if (path_percentage <= 1.0f) {
 				Vector2 pos = Vector2.Lerp(points[current_point_idx].position, points[target_point_idx].position, path_percentage);

@@ -145,8 +145,8 @@ namespace Game.Powerups
             GrenadeInventory inv = other.GetComponentInParent<GrenadeInventory>();
             if (inv == null) return;
 
-            // Top-up rule: the pickup refills to a full pack; only a FULL inventory ignores
-            // it (no accumulating beyond the cap).
+            // Pickup adds +grenadesPerPickup clamped to the cap; only a FULL inventory
+            // ignores it (no accumulating beyond the cap).
             // G3: grant + collect locally. TODO(G4): instead report the claim to the master
             // (GameManager.RPCClaimPowerup, RpcTarget.MasterClient, pickupId, actorNumber);
             // RPCResolvePowerup then grants the winner + collects the pickup on every peer.
