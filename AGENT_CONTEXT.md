@@ -149,6 +149,39 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-11 (handoff) — USER ROADMAP for the next sessions — READ THIS FIRST
+
+The grenade feature is wrapped and up as a PR: **`feature/paint-grenade` → `Multiplayer`**
+(base already corrected from master; description written; user creates/merges it).
+User-directed plan, in priority order:
+
+1. **Merge the grenade PR into `Multiplayer`.** User merges on GitHub; a fresh session then
+   does `git checkout Multiplayer && git pull` before anything else. (If the PR is already
+   merged when you read this, just pull.)
+2. **New branch off `Multiplayer`: bring the grenade mechanic to SINGLE-PLAYER.** There is
+   currently NO working single-player — treat "make single-player work at all" as part of
+   this step, then make grenades/pickups/HUD work there (the code already has non-networked
+   paths: `DoPlayerKilled`, local pickup grant, `PhotonNetwork.InRoom` guards everywhere —
+   audit those seams).
+3. **Expand multiplayer to ALL levels.** Today the flow SKIPS the level-select screen and
+   hardwires one arena (`level_1-multiplayer`). Stop skipping it: level select must appear
+   and every level must be playable in multiplayer with all the new functionality (synced
+   platforms, kills, pause/exit, grenades). Note: platform networkIds come from sorted
+   hierarchy paths per scene, so each level needs the same treatment/verification;
+   `PowerupSpawner` lives on the Bootstrap object in the MP scene — other levels need it too.
+4. **UI refinement pass** — visuals, layout polish, and UI bugs across menus/HUD.
+5. Then: review and **publish to itch.io** (deploy via `Scripts/deploy-itch.sh` + butler;
+   user must toggle visibility manually; REMEMBER the CC-BY credit: explosion sound
+   "Big Explosion" by Blender Foundation, OpenGameArt, CC-BY 3.0 — attribution required
+   on the itch page).
+
+Still-open items that should find a home inside that plan (not user-prioritized, don't lose
+them): **G4 master-authoritative pickups** (pickups still spawn per-peer with independent
+timers — the two unchecked §9 items depend on it; fits naturally under step 3's "all levels
+fully multiplayer" hardening), the **runtime sound dropout** (cornered to the PlayShoot call
+site — see the entry below; probes were STRIPPED in `7791fc48`, `git revert 7791fc48`
+restores the whole diagnostic kit), and **`ClearAllPickups` end-game wiring**.
+
 ### 2026-07-11 (later) — Grenade feature WRAPPED; game-over-exit freeze fixed (native-deadlock workaround); §9 complete except G4 items; sound bug cornered
 
 **User declared the grenade feature DONE this session** (G4 master-authoritative pickups is
