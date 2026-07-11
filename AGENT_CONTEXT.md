@@ -151,6 +151,9 @@ When you (a future agent) work on this repo:
 
 ### 2026-07-11 (handoff) — USER ROADMAP for the next sessions — READ THIS FIRST
 
+**Full technical plan + test checklist: `NEXT_PHASE_SPEC.md` (repo root)** — the
+slice-by-slice spec for everything below, same format as GRENADE_FEATURE_SPEC.md.
+
 The grenade feature is wrapped and up as a PR: **`feature/paint-grenade` → `Multiplayer`**
 (base already corrected from master; description written; user creates/merges it).
 User-directed plan, in priority order:
