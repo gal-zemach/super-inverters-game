@@ -659,7 +659,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeInventory
   grenadesPerPickup: 2
-  debugAlwaysHaveGrenade: 1
 --- !u!114 &5975234389743805994
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -18,24 +18,6 @@ namespace Game.Powerups
         [Tooltip("Grenades each player holds at match start.")]
         [SerializeField] private int startingGrenades = 3;
 
-#if UNITY_EDITOR
-        // TESTING ONLY — this whole block is compiled out of real builds. Refill after the
-        // pack empties. NOTE: while this is ON, walking into a pickup with a full pack is
-        // a no-op — turn it OFF (debug overlay toggle) to test collection.
-        [Header("Debug (Editor only)")]
-        [SerializeField] private bool debugAlwaysHaveGrenade = true;
-
-        public bool DebugAlwaysHaveGrenade
-        {
-            get => debugAlwaysHaveGrenade;
-            set
-            {
-                debugAlwaysHaveGrenade = value;
-                if (value && Count <= 0) Count = maxGrenades;
-            }
-        }
-#endif
-
         public int Count { get; private set; }
 
         public bool HasGrenade => Count > 0;
@@ -57,9 +39,6 @@ namespace Game.Powerups
         public void Consume()
         {
             if (Count > 0) Count--;
-#if UNITY_EDITOR
-            if (debugAlwaysHaveGrenade && Count <= 0) Count = maxGrenades;
-#endif
         }
     }
 }
