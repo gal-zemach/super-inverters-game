@@ -462,6 +462,13 @@ namespace Game {
 
 		public void PlayerKilled(GameObject killedPlayer)
 		{
+			// A local exit-to-menu tears the avatar down via PhotonNetwork.Destroy;
+			// deactivating its collider fires the bounds OnTriggerExit2D and lands
+			// here as a phantom death MID-CLEANUP — kill RPCs, score decrement and
+			// a respawn coroutine all racing LeaveRoom (froze the editor). The exit
+			// flag is set before the teardown, so it gates exactly that window.
+			if (s_pendingExitToMainMenu) return;
+
 			// Networked-instantiated objects get a "(Clone)" suffix on their
 			// name; strip it so the score / win-condition logic (which keys
 			// off the literal strings "BlackPlayer" / "WhitePlayer") matches

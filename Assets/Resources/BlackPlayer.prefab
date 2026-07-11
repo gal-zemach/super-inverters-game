@@ -658,6 +658,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe1242ba4726f4454bb8aa0a1f425701, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeInventory
+  grenadesPerPickup: 2
+  debugAlwaysHaveGrenade: 1
 --- !u!114 &5975234389743805994
 MonoBehaviour:
   m_ObjectHideFlags: 0

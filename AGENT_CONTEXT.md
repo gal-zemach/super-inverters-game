@@ -149,6 +149,55 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-11 — Pause-exit crash FIXED & verified; §9 test plan mostly done; sound bug still open
+
+**Agent session goal:** Re-orient after a day away; verify the pause-exit fix from the
+2026-07-10 fork session; update docs and commit the pause batch before the user forks for G4.
+
+**Pause-exit crash — FIXED (user-verified 2-peer PASS):**
+- Symptom: grenade mid-air → pause → "Back to Main Menu" hard-froze the clone editor
+  (force-quit; clone_4 got corrupted → user made fresh `clone_5` via ParrelSync).
+- Root cause (fixed in `GameManager.PlayerKilled`): a local exit tears the avatar down via
+  PhotonNetwork.Destroy; the collider deactivation fires the bounds OnTriggerExit2D → phantom
+  death mid-cleanup → kill RPCs + score decrement + respawn coroutine racing LeaveRoom.
+  Guarded by `s_pendingExitToMainMenu` (set in both exit paths before teardown, reset after).
+- NOTE: this repo ALSO has a documented NATIVE 6.4-macOS deadlock on the same exit path
+  (2026-05-23 entry). This crash was the C# race (code fix resolved it); if a back-to-menu
+  freeze recurs, suspect the native one — capture `sample <pid>` before force-quitting.
+- Verified the fix was COMPILED into BOTH editors before the re-test (reflection probe for
+  the new field via MCP; remember the deferred-recompile gotcha — verify per editor).
+
+**Pause menu polish (same uncommitted batch, now committed):** translucent grey pause overlay
+(60% alpha — frozen game stays visible); all three pause buttons uniform placeholder look;
+"Exit to" → "Back to Main Menu"; EndMenuManager no longer hijacks the pause menu's runtime
+buttons into game-over word art; UI png metas got WebGL platform overrides + spriteMode fixes.
+
+**§9 test-plan status:** radius ✓, bounce decay ✓, fuse-in-pause ✓ (incl. exit-during-pause).
+UNCHECKED the two G4-dependent items (falls-identically, grab-race) that had been marked [x] —
+pickups still spawn per-peer, so they cannot pass until G4. Remaining: game-over with grenade
+mid-air, rematch/registry reset, WebGL smoke build.
+
+**KNOWN OPEN BUG — runtime sound dropout (recurring, cause still unproven):** sounds stop
+during play; this time BOTH the detonation boom AND shot SFX died together. Facts so far:
+audio state provably never corrupts (live probe 2026-07-10: 5 simultaneous booms + collect
+leave the Shoot source enabled/playing/volume-correct); whole chain (EnableSFX, wiring, clip
+GUIDs) intact. Multiple sounds dying TOGETHER points at listener/editor/system level, not
+per-source. Prime suspects: (a) two-editor audio focus (Unity mutes the unfocused instance's
+game audio depending on prefs), (b) macOS audio device switching. Next diagnostic: when it
+happens, note which editor was focused + whether jump/music also died, and check the Game
+view Mute Audio toggle before anything else.
+
+**State left behind:** all of the above committed on `feature/paint-grenade` (user pushes).
+`clone_5` is the live ParrelSync clone (Assets/ProjectSettings symlinked — code always in
+sync, own Library, compile per editor); clones 0–4 are stale, multi-GB, deletable via the
+ParrelSync Clones Manager. Debug test kit is RESTORED (1f20fe23) and should be stripped
+again at ship.
+
+**Next agent should:** (1) **G4** per the session-4 kickoff below (master-authoritative
+pickups + fold in ClearAllPickups end-game wiring); (2) then the remaining §9 items incl.
+the two G4-dependent re-runs and the WebGL smoke build; (3) chase the sound dropout with
+the discriminating observations above if it recurs.
+
 ### 2026-07-10 (session 4) — Converge FX, HUD polish, lobby feedback, top-up pickups
 
 **Shipped (one commit after session 3's):** DBZ converge orbs on collect (ring of white glow
