@@ -969,7 +969,7 @@ namespace Game {
 				// Same dev switch that silences the level music: the end menu has its
 				// own play-on-awake music, keep test runs quiet too.
 				var endAudioGo = _endGameMenu.transform.Find("EndGameAudio");
-				if (endAudioGo != null) endAudioGo.SetActive(false);
+				if (endAudioGo != null) endAudioGo.gameObject.SetActive(false);
 			}
 			EndMenuManager menuManager = _endGameMenu.GetComponent<EndMenuManager>();
 			menuManager.setAnimation(winPlayerId);
