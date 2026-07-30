@@ -49,9 +49,12 @@ namespace Game
 			if (image != null)
 				image.color = Color.white;
 
+			// Dark label: the button image is white in its normal state (the tint
+			// only greys it when selected/pressed), so a near-white label is
+			// invisible until the button is selected.
 			var label = button.GetComponentInChildren<Text>();
 			if (label != null)
-				label.color = new Color(0.96f, 0.96f, 0.96f, 1f);
+				label.color = new Color(0.15f, 0.15f, 0.15f, 1f);
 
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(() => sceneLoader.LoadSceneByName(sceneName));
