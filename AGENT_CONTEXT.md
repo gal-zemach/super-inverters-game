@@ -149,6 +149,408 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-07-11 (handoff) — USER ROADMAP for the next sessions — READ THIS FIRST
+
+**Full technical plan + test checklist: `NEXT_PHASE_SPEC.md` (repo root)** — the
+slice-by-slice spec for everything below, same format as GRENADE_FEATURE_SPEC.md.
+
+The grenade feature is wrapped and up as a PR: **`feature/paint-grenade` → `Multiplayer`**
+(base already corrected from master; description written; user creates/merges it).
+User-directed plan, in priority order:
+
+1. **Merge the grenade PR into `Multiplayer`.** User merges on GitHub; a fresh session then
+   does `git checkout Multiplayer && git pull` before anything else. (If the PR is already
+   merged when you read this, just pull.)
+2. **New branch off `Multiplayer`: bring the grenade mechanic to SINGLE-PLAYER.** There is
+   currently NO working single-player — treat "make single-player work at all" as part of
+   this step, then make grenades/pickups/HUD work there (the code already has non-networked
+   paths: `DoPlayerKilled`, local pickup grant, `PhotonNetwork.InRoom` guards everywhere —
+   audit those seams).
+3. **Expand multiplayer to ALL levels.** Today the flow SKIPS the level-select screen and
+   hardwires one arena (`level_1-multiplayer`). Stop skipping it: level select must appear
+   and every level must be playable in multiplayer with all the new functionality (synced
+   platforms, kills, pause/exit, grenades). Note: platform networkIds come from sorted
+   hierarchy paths per scene, so each level needs the same treatment/verification;
+   `PowerupSpawner` lives on the Bootstrap object in the MP scene — other levels need it too.
+4. **UI refinement pass** — visuals, layout polish, and UI bugs across menus/HUD.
+5. Then: review and **publish to itch.io** (deploy via `Scripts/deploy-itch.sh` + butler;
+   user must toggle visibility manually; REMEMBER the CC-BY credit: explosion sound
+   "Big Explosion" by Blender Foundation, OpenGameArt, CC-BY 3.0 — attribution required
+   on the itch page).
+
+Still-open items that should find a home inside that plan (not user-prioritized, don't lose
+them): **G4 master-authoritative pickups** (pickups still spawn per-peer with independent
+timers — the two unchecked §9 items depend on it; fits naturally under step 3's "all levels
+fully multiplayer" hardening), the **runtime sound dropout** (cornered to the PlayShoot call
+site — see the entry below; probes were STRIPPED in `7791fc48`, `git revert 7791fc48`
+restores the whole diagnostic kit), and **`ClearAllPickups` end-game wiring**.
+
+### 2026-07-11 (later) — Grenade feature WRAPPED; game-over-exit freeze fixed (native-deadlock workaround); §9 complete except G4 items; sound bug cornered
+
+**User declared the grenade feature DONE this session** (G4 master-authoritative pickups is
+still the open networking slice — pickups spawn per-peer; see the G4 kickoff plan below).
+
+**Game-over-exit editor freeze — root-caused & WORKED AROUND (user-verified, many clean exits):**
+- Symptom returned: "Back to Main Menu" from the game-over screen deterministically hard-froze
+  the CLICKING editor (other peer exited fine). Blocked at ~0% CPU = deadlock, not livelock.
+- This is the **documented Unity 6000.4-macOS native engine deadlock** (see 2026-05-23 entry:
+  main thread in `SpriteRenderer::MainThreadCleanup` on a mutex orphaned by a "prematurely
+  finalized" thread, downstream of synchronous `SceneManager.LoadScene`). It came back with
+  the 2026-06-19 return to 6.4.4 (6.3.16 had broken WebGL modules). Today's logs showed the
+  known precursor warning again.
+- **Workaround that holds:** `GameManager.LoadMainMenuScene` now defers the load 2 frames and
+  uses `LoadSceneAsync` from a `DontDestroyOnLoad` runner (`DeferredSceneLoader`, nested in
+  GameManager). Changes the thread/timing pattern the engine bug races on. If the freeze ever
+  recurs: `sample <pid>` BEFORE force-quitting; fallback plan = newer 6000.4.x editor patch.
+- Also fixed while chasing it (real managed races found in the frozen session's logs):
+  - **Receive-side exit gates:** `RPCReportKillToMaster` / `RPCApplyKillResult` /
+    `RPCRespawnWithoutScore` now early-return on `s_pendingExitToMainMenu` — a kill verdict
+    arriving mid-teardown used to run `endGame()`/`ForceRespawn()` (PhotonNetwork.Instantiate!)
+    against an in-flight LeaveRoom. (Send side was gated last session; receive side was the hole.)
+  - **PlatformManager exception storm on exit:** platforms that ran the synced in-room path
+    fell back to LOCAL motion with stale `reverse_dir` when InRoom flipped false at teardown →
+    `ArgumentOutOfRangeException` every FixedUpdate. New `_usedSyncedMotion` flag freezes them
+    in place instead ("once synced, stay synced-or-still").
+
+**Game-over now freezes the world like pause (user request):** `endGame()` sets
+`Time.timeScale = 0` at the verdict (grenade hangs mid-air, can never paint after game over —
+§9 item). Menu reveal uses `WaitForSecondsRealtime`; end-menu title Animator runs
+`UnscaledTime`; BOTH replay paths call `RestoreGameplayTimeScale()` and `GameManager.Awake`
+resets timeScale to 1 (timeScale survives scene loads). PUN dispatch at timeScale 0 already
+handled (`MinimalTimeScaleToDispatchInFixedUpdate = 1` in Awake).
+
+**Grenade economy (user request):** start with 3, cap 3, pickup +2 clamped (1→3, 2→3, full →
+pickup ignored & keeps falling). Serialized fields `startingGrenades`/`maxGrenades`/
+`grenadesPerPickup` in `GrenadeInventory`; prefabs untouched (C# defaults). HUD scales itself.
+
+**§9 status:** game-over-mid-air ✓, rematch ✓, WebGL smoke build ✓ (headless
+`Scripts/build-webgl.sh` → Success, ~100 MB, debug kit compiled out). Remaining: the two
+G4-dependent items (falls-identically, grab-race).
+
+**Runtime sound bug — not fixed but CORNERED (evidence chain):**
+1. At dropout: 0 virtual voices, listener unpaused, boom sometimes unaffected → NOT the mixer.
+2. **Replay fixes it** → broken state lives in scene objects, NOT editor/OS audio.
+3. Local Shoot source read `vol=1.00` during dropout (PlayShoot stamps 0.22 every call) and
+   ZERO `[AudioDebug]` warnings logged → **`PlayShoot` is never being CALLED during dropout**,
+   while bullets still fire. The whole bug is now pinned to `PlayerManager.cs` ~line 503:
+   `if (EnableSFX) _sfx.PlayShoot();`.
+4. Instrumentation in place (all `#if UNITY_EDITOR`): debug panel Audio section shows
+   `shots=` (PlayerManager.DebugShotAttempts) vs `sfxCalls=` (PlayerSFX.DebugShootCalls) +
+   last-call frame + instance-id MATCH/STALE + EnableSFX + player/mine counts + voice census;
+   call site logs a 3-way `[AudioDebug]` warning naming the culprit (EnableSFX false /
+   `_sfx` never assigned / `_sfx` DESTROYED). **Next repro: read the panel bottom line +
+   console warning — that's the verdict.** Clue: user says only the MAIN editor ever gets it
+   (editors aren't symmetric: master role; respawns run on the victim's editor).
+
+**Housekeeping:** clone_5 → **clone_6** (fresh ParrelSync copy after a freeze force-quit).
+Debug kit (panel/probes/H-key) is KEPT for the sound hunt — all editor-only, compiled out of
+builds; strip whenever wanted. `Web build/Build/*` payloads are gitignored; only small
+template files are tracked.
+
+**Next agent should:** (1) G4 per the session-4 kickoff plan below (+ wire `ClearAllPickups`
+into end-game); (2) re-run the two G4-dependent §9 items; (3) close the sound bug via the
+panel verdict on next repro.
+
+### 2026-07-11 — Pause-exit crash FIXED & verified; §9 test plan mostly done; sound bug still open
+
+**Agent session goal:** Re-orient after a day away; verify the pause-exit fix from the
+2026-07-10 fork session; update docs and commit the pause batch before the user forks for G4.
+
+**Pause-exit crash — FIXED (user-verified 2-peer PASS):**
+- Symptom: grenade mid-air → pause → "Back to Main Menu" hard-froze the clone editor
+  (force-quit; clone_4 got corrupted → user made fresh `clone_5` via ParrelSync).
+- Root cause (fixed in `GameManager.PlayerKilled`): a local exit tears the avatar down via
+  PhotonNetwork.Destroy; the collider deactivation fires the bounds OnTriggerExit2D → phantom
+  death mid-cleanup → kill RPCs + score decrement + respawn coroutine racing LeaveRoom.
+  Guarded by `s_pendingExitToMainMenu` (set in both exit paths before teardown, reset after).
+- NOTE: this repo ALSO has a documented NATIVE 6.4-macOS deadlock on the same exit path
+  (2026-05-23 entry). This crash was the C# race (code fix resolved it); if a back-to-menu
+  freeze recurs, suspect the native one — capture `sample <pid>` before force-quitting.
+- Verified the fix was COMPILED into BOTH editors before the re-test (reflection probe for
+  the new field via MCP; remember the deferred-recompile gotcha — verify per editor).
+
+**Pause menu polish (same uncommitted batch, now committed):** translucent grey pause overlay
+(60% alpha — frozen game stays visible); all three pause buttons uniform placeholder look;
+"Exit to" → "Back to Main Menu"; EndMenuManager no longer hijacks the pause menu's runtime
+buttons into game-over word art; UI png metas got WebGL platform overrides + spriteMode fixes.
+
+**§9 test-plan status:** radius ✓, bounce decay ✓, fuse-in-pause ✓ (incl. exit-during-pause).
+UNCHECKED the two G4-dependent items (falls-identically, grab-race) that had been marked [x] —
+pickups still spawn per-peer, so they cannot pass until G4. Remaining: game-over with grenade
+mid-air, rematch/registry reset, WebGL smoke build.
+
+**KNOWN OPEN BUG — runtime sound dropout (recurring, cause still unproven):** sounds stop
+during play; this time BOTH the detonation boom AND shot SFX died together. Facts so far:
+audio state provably never corrupts (live probe 2026-07-10: 5 simultaneous booms + collect
+leave the Shoot source enabled/playing/volume-correct); whole chain (EnableSFX, wiring, clip
+GUIDs) intact. Multiple sounds dying TOGETHER points at listener/editor/system level, not
+per-source. Prime suspects: (a) two-editor audio focus (Unity mutes the unfocused instance's
+game audio depending on prefs), (b) macOS audio device switching. Next diagnostic: when it
+happens, note which editor was focused + whether jump/music also died, and check the Game
+view Mute Audio toggle before anything else.
+
+**State left behind:** all of the above committed on `feature/paint-grenade` (user pushes).
+`clone_5` is the live ParrelSync clone (Assets/ProjectSettings symlinked — code always in
+sync, own Library, compile per editor); clones 0–4 are stale, multi-GB, deletable via the
+ParrelSync Clones Manager. Debug test kit is RESTORED (1f20fe23) and should be stripped
+again at ship.
+
+**Next agent should:** (1) **G4** per the session-4 kickoff below (master-authoritative
+pickups + fold in ClearAllPickups end-game wiring); (2) then the remaining §9 items incl.
+the two G4-dependent re-runs and the WebGL smoke build; (3) chase the sound dropout with
+the discriminating observations above if it recurs.
+
+### 2026-07-10 (session 4) — Converge FX, HUD polish, lobby feedback, top-up pickups
+
+**Shipped (one commit after session 3's):** DBZ converge orbs on collect (ring of white glow
+orbs flies inward during the whiten; unparented PS — pickup's ×6 scale would blow up the ring);
+collapsible debug panel (▶/▼, state static across round reloads); pickup fallSpeed baked 4.94;
+boom volume 0.35→0.22 (long reverb tail was MASKING the quiet 0.22 shots — investigated live:
+5 simultaneous booms + collect leave the Shoot source healthy, so "shot SFX broke" was masking,
+not state corruption; if reported again check (a) shots still fire visually (b) jump SFX works);
+grenade HUD: White's icons right-aligned to mirror its lives row, opaque white plate behind
+icons; lobby "Create room" locks + animated "Creating..." until Photon answers (reset on
+joined/left/failed); pickups now TOP UP to max (collect at any count below 2; ignored at full —
+no accumulation). GOTCHA: a duplicate converge field block appeared in GrenadePickup.cs from a
+PARALLEL edit (user-side IDE/AI?) causing CS0102 — if fields duplicate mysteriously, check for
+that channel before blaming yourself.
+
+**Slice score after this session:** G1–G3 ✓, G5 ✓ (2-peer playtested), G6 ~95% ✓ (absorbed
+piecemeal: sprite, HUD, FX/SFX, debug strip). **G4 is the ONLY remaining slice.**
+
+**Next agent should (G4 kickoff):**
+1. **G4 per spec §3.3/§8** — master-authoritative pickup spawn + claim. Currently each peer
+   runs `PowerupSpawner`'s local timer independently → peers see DIFFERENT drops. Master picks
+   (pickupId, spawnX, PhotonNetwork.Time) → `RPCSpawnPowerup` (All) → every peer calls the
+   existing `SpawnPickup(pickupId, spawnX, spawnTime)` (fall is already analytic off
+   PhotonNetwork.Time — deterministic across peers). Claim: `RPCClaimPowerup` (MasterClient)
+   → `RPCResolvePowerup` (All); copy the kill-flow RPC shape in GameManager. Only the master's
+   scheduler runs (`PhotonNetwork.IsMasterClient` gate in PowerupSpawner.Update).
+2. Fold into G4's first commit: wire `PowerupSpawner.ClearAllPickups()` into the end-game path
+   (built in G3, never wired — pickups linger on the end screen).
+3. Re-add a debug H-key drop (editor-only) if needed for testing — the full tooling was
+   stripped in 129684c2; resurrect from that commit's parent.
+4. At next itch publish: CC-BY credit — Explosion sound: "Big Explosion" by Blender Foundation
+   (opengameart.org/content/big-explosion), CC-BY 3.0.
+
+### 2026-07-10 (session 3) — Pickup collect flash + focused debug panel
+
+**Shipped (commit after the Grenade Juice one):**
+- **Collect animation:** on pickup the grenade freezes in place, gradually turns SOLID WHITE
+  (anime power-up) and vanishes — 0.6s baked (`collectAnimSeconds`). The whiten uses a
+  child SpriteRenderer with the built-in `GUI/Text Shader` (renders sprite alpha as flat
+  colour — the only way to push a dark sprite TO white; tints only darken). NOTE for the
+  WebGL build: if that shader gets stripped, add it to Always Included Shaders (there's a
+  graceful fade-only fallback if Shader.Find returns null).
+- **Debug panel slimmed to the pickup-test kit** (all `#if UNITY_EDITOR`): H-drop, held
+  count, always-have toggle, pickup fall speed (1.9 baked), pickup hitbox radius slider
+  (live on falling pickups; 0.25 prefab value confirmed by playtest), collect whiten
+  seconds. Removed the fuse/blink/trail sliders AND their static overrides — those values
+  are final in Grenade.prefab (fuse 2.31, blink 1.5/s, trail 0.45s@40/s).
+- **Shot-SFX "regression" investigated — NOT a bug:** full chain audited (EnableSFX=1 both
+  prefabs, AudioSources wired, PLAYER-SHOOT.wav guid intact since origin/Multiplayer).
+  Cause was environmental — two open editors (ParrelSync clone) mess with editor audio
+  focus; user confirmed sound works. Remember: remote/ghost shots are silent BY DESIGN.
+
+### 2026-07-10 (session 2) — "Grenade Juice": sprite, spin, mid-air detonate, LED fuse light, trail, 2-pack pickups, HUD
+
+**Agent session goal:** Real grenade sprite + a juice pass on the whole mechanic, driven by
+live playtest iterations with the user.
+
+**Shipped (single commit `Grenade Juice`):**
+- **Sprite:** user-supplied grenade art imported as `Assets/Graphics/Sprites/grenade.png`
+  (35×43, PPU 100, point filter; meta GUID authored by agent: `5d7cbea2dc284b4fa10088b7205e59e1`).
+  Wired into `Grenade.prefab` (magenta Knob placeholder gone) AND `GrenadePickup.prefab`.
+- **Physics juice:** random tumble on throw (`spinDegPerSecMin/Max` 180–540°/s opposite the
+  throw direction, ±25° initial tilt); spin decays with `bounceVelocityRetention` on bounces.
+- **Mid-air detonate:** pressing G with a grenade airborne detonates it (`GrenadeThrower.
+  DetonateAirborne` + `HasAirborne`). While airborne you CANNOT charge a new throw (CanAim
+  gate) and the detonating press is swallowed until key-up. Ghost follows via the usual RPC.
+- **Fuse LED:** small white blinking dot (~8 screen px, `fuseLightSize` 0.85, offset near cap,
+  sorting order 12, code-generated soft-circle sprite) on the armed grenade; blink 1.5/s.
+- **Trail:** world-space ParticleSystem on the grenade — square particles, zero gravity/speed,
+  thrower-coloured (near-black for Black / near-white for White — MID-GREY IS INVISIBLE against
+  the grey city background), 0.45s decay, 40/s; detaches on death to finish fading.
+- **Pickups grant 2:** `GrenadeInventory` is count-based (`grenadesPerPickup` 2); can't collect
+  while still holding. Pickup visual = grenade sprite with a brightness pulse (tint breathes
+  0.55→1; sprite tints can only darken, so "brighter" = up from a dimmed baseline).
+- **HUD:** `ShootCooldownHud` now draws one grenade icon per held grenade under the lives row
+  (44px invisible-box spacing); the burst-ammo bar is hidden via new `showBurstBar=false`
+  (layout still anchors the icons).
+- **Debug tooling re-added, ALL `#if UNITY_EDITOR`** (compiled out of builds — this was the
+  user's requirement): H-key pickup drop, always-have-grenade toggle (warns it makes pickups
+  no-op), sliders for fuse (2.31 baked), blink (1.5 baked), trail decay/amount (0.45/40 baked),
+  and a "fuse light always ON" visibility-test toggle.
+
+**HARD-WON GOTCHAS (do not relearn):**
+- **The user's Editor defers recompiles until it regains focus.** MCP `refresh_unity`,
+  `RequestScriptCompilation`, even Play-mode entry did NOT swap the assembly while unfocused —
+  several "bug reports" were stale-assembly tests. Freshness marker trick: point the user at a
+  UI element that only exists in the new code.
+- **Two Unity instances = MCP routes to "most recent"** (was the ParrelSync clone!). Pin with
+  `set_active_instance` (main = `super-inverters-game@646d1cbe`); instance list is visible in
+  `~/Library/Application Support/UnityMCP/Logs/unity_mcp_server.log`.
+- **The in-play arena background is a full-greyscale cityscape** (edit-mode renders show black
+  — background art builds at runtime). Any single grey tone vanishes against it somewhere; the
+  camera shows ~70 world units, so anything under ~0.5 world units is sub-8px on screen.
+- Render-to-RenderTexture via `execute_code` works headless for visual verification (screenshots
+  in scratchpad); `ps.Simulate()` to pre-warm particles; clean up strays (failed exec attempts
+  leave instantiated objects in the open scene).
+
+**Next agent should:** (1) **G4** — master-authoritative pickup spawn + claim (pickups still
+per-peer, peers see different drops; `PowerupSpawner.SpawnPickup` seam ready); (2) G6 — real
+pickup/explosion polish, `ClearAllPickups` end-game wiring, strip debug tooling again, CC-BY
+attribution line (explosion sound) on the itch page; (3) user pushes the branch.
+
+### 2026-07-10 — G5 COMPLETE & 2-peer playtested (ghost + explosion FX/SFX); tuning baked
+
+**Agent session goal:** Act on the user's live-testing feedback: tuning tweaks + sliders,
+always-have-grenade debug, explosion visual + sound, and the G5 ghost (remote peer now sees
+the grenade fly and explode). **User confirmed 2-peer PASS on the ghost + explosion.**
+
+**Shipped (committed this session as two commits — `Slice G5: grenade ghost + synced detonation
+paint` + `chore: bake playtested grenade tuning; strip debug tooling`; the whole branch is still
+UNPUSHED — user pushes):**
+- **G5 ghost:** `GrenadeThrower.cs` RPCs `RPCSpawnGhostGrenade` (Others) on throw and
+  `RPCDetonateGhostGrenade` (Others) on detonation. **DEVIATION from spec §3.8:** both RPCs
+  live on the PLAYER's PhotonView, not GameManager — the remote copy of the thrower already
+  has the grenadePrefab reference + framework, so zero scene wiring; per-view RPC ordering
+  guarantees spawn-before-detonate. Ghost = same prefab via `GrenadeProjectile.InitGhost`:
+  simulates physics locally, NEVER paints, snaps to the authoritative pos/radius on the
+  detonate RPC; +0.75s grace fuse as fallback; if the ghost is already gone the RPC handler
+  spawns the ring directly at the authoritative spot.
+- **Explosion FX:** new `GrenadeExplosionRing.cs` — ring expands 0.5→paint radius over 0.35s
+  (ease-out, fades, paint-colour), spawned by both real and ghost detonations; also plays the
+  boom SFX (2D one-shot, `BoomVolume` const 0.35, throwaway GO — PlayClipAtPoint would be
+  3D-attenuated).
+- **SFX asset:** `Assets/Resources/Audio/grenade_explosion.wav` ← "Big Explosion"
+  (DeathFlash.flac, converted via afconvert) by **Blender Foundation, OpenGameArt,
+  CC-BY 3.0 — ATTRIBUTION REQUIRED on the published game page** (user's pick, replacing the
+  CC0 NenadSimic one). Loaded lazily via `Resources.Load("Audio/grenade_explosion")`;
+  missing clip = one warning, silent, no error.
+- **Debug tooling: used for tuning, then STRIPPED entirely (user call — G6's debug-strip done
+  early):** deleted `GrenadeDebugSpawner.cs` (H-key pickup drop + slider overlay), removed
+  `PowerupSpawner.DebugSpawnNow` + `FallSpeed` accessor, `GrenadeAimController` tuning
+  accessors, `GrenadeProjectile` static fuse/radius overrides, and the (never-committed)
+  `GrenadeInventory.debugAlwaysHaveGrenade`. Grenades now come ONLY from falling pickups.
+  The screenshot-the-sliders → bake workflow worked well; rebuild it from this entry's git
+  history if another tuning pass is ever needed.
+- **Tuning BAKED from the user's panel screenshot:** fallSpeed **1.9** (scene Bootstrap),
+  throwForceMax **53.8** + chargeRamp 1.2 (both player prefabs), fuseSeconds **1.6**
+  (user revised down from the screenshot's 2.59) + explosionRadius **14.1** (Grenade.prefab).
+
+**Next agent should:** (1) **G4** per spec §3.3/§8 — pickups still spawn per-peer independently,
+so peers see DIFFERENT falling grenades (the `PowerupSpawner.SpawnPickup` seam is ready);
+(2) **G6 polish** — HUD, real grenade/pickup sprites + sizes, lifecycle gating
+(`ClearAllPickups` wiring into end-game), and the CC-BY attribution line on the itch.io page
+(the debug strip half of G6 is already done); (3) remind the user to push the branch.
+
+### 2026-07-04 (session 2) — Grenade: Slice G3 shipped + G5 paint-sync pulled forward
+
+**Agent session goal:** Continue the paint-grenade feature from the G1/G2 handoff — implement
+G3 (falling pickup + local collection). A grenade paint desync surfaced in the user's 2-peer
+test mid-session; user chose to fix it immediately (out of slice order).
+
+**Shipped (committed on `feature/paint-grenade`; UNPUSHED — user pushes both):**
+- `ababa1ea` **G3** — `PowerupSpawner.cs` (on `Bootstrap`): local scheduler, random 15–25s
+  interval, random X (-40..38), `spawnTopY=52`, cap 2, gated on
+  `PlatformMotionEpoch>=0 && !CountdownActive`. Built around `SpawnPickup()` + a `_activePickups`
+  registry as the **seam for G4's master-authoritative RPCs**; `DebugSpawnNow()` for the H key.
+  `GrenadePickup.cs` (+ `Assets/Prefabs/GrenadePickup.prefab`): kinematic trigger, analytic
+  descent `y = spawnTopY - (NetworkNow - spawnTime)*fallSpeed` (**already epoch-ready for G4**),
+  `IsMine`+tag-gated collection grants one grenade, single-slot no-op while holding, despawn
+  below `despawnY=-25`. New `powerup` tag + `powerup` **layer (slot 12)**; Physics2D matrix:
+  powerup collides **ONLY** with `players_black`/`players_white` (trigger detection), all else
+  off. Debug key **H repurposed**: was instant-grant, now **drops a real pickup from the sky**.
+  Debug overlay: force sliders replaced by a **fall-speed slider** (`PowerupSpawner.FallSpeed`,
+  0.5–15) + kept charge-ramp. Scene re-serialized to 6.4 format (m_RootOrder drop etc.) —
+  benign churn, no data loss (verified).
+- `4712495c` **G5 paint-sync (pulled forward)** — `GrenadeProjectile.Detonate()` now, after each
+  local `ApplyPaintFromNetwork`, calls `GameManager.BroadcastPaintPlatform(pm.networkId, framework)`
+  to Others (lazy `FindFirstObjectByType<GameManager>()`) — the SAME call shots use. Fixes the
+  reported desync (grenade paint landed only on the thrower's peer). The remote **ghost** grenade
+  (see it fly/explode) is still TODO — cosmetic; platform colours now sync regardless.
+
+**Deviations / user calls (baked in):** pickup placeholder is **WHITE, scale ×6, heartbeat
+pulse** (scale breathes ±20% @1.5/s) — user's spec for the B&W game. "Six times larger" read as
+**×6 absolute** (was ×3) — user may want ×18; confirm. `fallSpeed` default still 1.5 (user tuning
+live via the slider — bake their chosen value when they name it).
+
+**Verified:** G3 mechanics in a single-editor harness (spawned a fake DYNAMIC player in the fall
+path, since pressing Play boots to `main_menu` via a play-mode start-scene override, not the MP
+level): collection grants exactly one, single-slot no-ops, fall + despawn, white/×6/pulse — zero
+grenade/powerup errors. **NOT yet 2-peer tested:** the `4712495c` paint-sync fix — needs the
+spec §9 test (throw on peer A → platforms flip on BOTH; walk both players onto a painted platform,
+no fall-through on either editor).
+
+**Process notes (this session):** `refresh_unity` drops the MCP stdio bridge during the compile —
+reconnects on the next call, not an error. Pressing Play from `level_1-multiplayer` boots to
+`main_menu` (start-scene override) so the MP level can't be exercised standalone via MCP — real
+pickup/paint testing is host-solo/2-peer by the user. Exit Play before editing scripts (unchanged).
+
+**What's blocked / to decide:** slice order is now scrambled — G5's paint half is done before G4.
+Remaining: G4 (networked pickup spawn + master-authoritative claim), G5 ghost (RPCSpawnGhostGrenade
+/ RPCDetonateGrenade), G6 (lifecycle gating + HUD + strip debug tooling + real sprite/size). Confirm
+order with the user. Parked-and-separate: the pre-existing MP platform-color desync (player appears
+on a wrong-coloured platform) — NOT the grenade issue.
+
+**Next agent should:** (1) have the user 2-peer test `4712495c` (grenade paint sync) first; (2) then
+either G4 or the G5 ghost per user preference; (3) keep the debug tooling until G6. Prefab/scene/matrix
+are wired — new work is mostly scripts + (for G4/G5) new RPCs on `GameManager`.
+
+### 2026-07-04 — Grenade power-up: Slices G1 + G2 shipped (projectile + hold-to-charge throw)
+
+**Shipped (committed on `feature/paint-grenade`; user pushes):**
+- `b1fcad1b` **G1** — `GrenadeProjectile` (dynamic physics, per-bounce velocity damping, fuse, bounds despawn, detonation radius paint via `PlatformManager.ApplyPaintFromNetwork` — local path only). New `grenade` tag + layer (slot 8) + Physics2D matrix row (collides Default/floor/walls + `platforms_black/grey/white` + `floor`; ignores players/shots/shells/itself). `Grenade Material.physicsMaterial2D` (bounciness 0.55). Placeholder `Grenade.prefab`.
+- `7c8a723d` **chore** — pre-existing Unity MCP + ProBuilder/VFX Graph package churn, committed separately so slice diffs stay feature-only.
+- `5c1f925b` **G2** — player-side throw: `GrenadeInventory` (capacity 1), `GrenadeThrower` (spawns from player, coloured by `player_framework`; local only — ghost RPC is G5), `GrenadeAimController` (hold-to-charge, force lerps min..max over time, gated on `IsMine && HasGrenade && !CountdownActive && !LocalPauseActive && !ControlsDisabled`, aim from `PlayerManager.shootingDirection`). Added `PlayerManager.ControlsDisabled` getter. Both player prefabs (`Assets/Resources/{Black,White}Player.prefab`) wired.
+
+**Decisions / deviations (baked in):**
+- Aim UI = a **widening white `LineRenderer` beam** toward the mouse (charge = length), NOT the spec §3.5 dotted trajectory-arc. User's call.
+- `throwForceMax` = **47.8** (playtest), min 8, chargeRamp 1.2.
+- Grenade prefab is a **placeholder** (magenta, oversized ×4 for visibility) — user supplies the real sprite; resize + real sprite in G6 polish.
+
+**Temporary debug tooling — REMOVE in G3:** `Assets/scripts/Powerups/GrenadeDebugSpawner.cs` is a self-bootstrapping `DontDestroyOnLoad` AUTO object — press **H** to grant the local player a grenade, hold **G** to throw, on-screen sliders tune force/ramp live. Exists only until real pickups land in G3.
+
+**Process gotchas learned this session (do not repeat):**
+- **Exit Play before editing/recompiling scripts.** A mid-play domain reload corrupts `PlatformManager` runtime indices → `ArgumentOutOfRangeException` spam at `PlatformManager.cs:220` (NOT a real bug — it's this).
+- **One editor only during asset/script writes** (ParrelSync clone shares `Library/` symlink → asset-DB corruption). Open the clone only for 2-peer tests, close before edits.
+- **Test in `level_1-multiplayer`, not `main_menu`** (menu has no arena/camera). Ungated debug key + baked platforms means a host-solo Play is enough for local slices.
+- Unity MCP (stdio) `execute_code`: needs `action:"execute"`, no `using` directives (fully-qualify types), must `return` a value.
+
+**Parked (separate from grenade):** MP **platform-color desync** — a player appears to stand on a wrong-coloured platform on one peer; likely a missing/unbuffered paint sync. Needs repro. Task flagged.
+
+**Next agent should:** implement **G3** (spec §8 / §3.1 / §3.2) — falling `GrenadePickup` + `PowerupSpawner` running locally (no RPCs yet), kinematic descent, player-trigger collection granting one grenade, despawn below bounds, single-slot rule; **remove the debug spawner**. Then G4 (networked pickup + master-authoritative claim), G5 (grenade ghost + synced detonation paint), G6 (lifecycle gating + HUD + real sprite/size + strip all debug).
+
+### 2026-07-03 (session 2) — Grenade power-up: branch + tech spec (NO implementation yet)
+**Agent session goal:** Plan a new feature — falling grenade power-up (collect 1, hold-to-charge throw, physics bounce with decay, fuse-timer detonation paints all platforms in a radius the thrower's color). MP-only v1.
+
+**What exists now:**
+- Branch **`feature/paint-grenade`** off `Multiplayer`, re-pointed on top of the bug-fix commit `85a1f2e2` so the feature builds on the fixed kill/paint flow.
+- **`GRENADE_FEATURE_SPEC.md`** at repo root — the full tech spec (architecture, RPC design, physics, tunables, scene wiring, gating rules, implementation order, 2-peer test plan). An implementing agent should read AGENT_CONTEXT.md then that spec and start at its §8 **Slice G1**; the spec's §8 defines 6 slices (G1–G6), each ending in exactly ONE commit with a prescribed message — the user reviews each slice's diff before the next begins. User-confirmed decisions baked in: hold-to-charge clamped ramp (no ping-pong), fuse-timer detonation, MP-only, grenade lost on death, user supplies the grenade sprite later (placeholder until then).
+- The spec was largely authored in a parallel session and adopted/amended in this one (preconditions resolved, ramp mode + death rule corrected) — treat the committed version as canonical.
+
+**Uncommitted, deliberately left for the user to decide:** MCP-dependency churn — `Packages/manifest.json` + lock (re-adds `com.coplaydev.unity-mcp`, adds ProBuilder + VFX Graph from the MCP window's Deps tab), `ProjectSettings/InputManager.asset` (Unity 6 auto-added Debug axes), `VFXManager.asset`, `ShaderGraphSettings.asset`, `ProjectSettings/Packages/`. Harmless but should be committed as separate editor/deps churn if kept.
+
+**Next agent should:** implement `GRENADE_FEATURE_SPEC.md` §8 in order on `feature/paint-grenade`; each step must compile + be testable; finish with the §9 playtest matrix.
+
+### 2026-07-03 — Code review: 4 bug fixes (kill-race softlock, pause-exit strand, RestartMusic NRE, hasNoLives)
+**Agent session goal:** Verify repo path/state after user's return, then review MP code for bugs and fix findings.
+
+**Project-state finding (already resolved by user):** On 2026-06-20 the project had been opened with **6000.3.16f1** (rewrote ProjectVersion.txt, mono crash 2 min later — the exact scenario the 2026-06-19 entry warns about). User reopened with 6000.4.4f1 and committed the pending working tree as `08387490`.
+
+**Code fixes this session (code-only, compile NOT yet verified in Editor, NOT playtested):**
+1. **Kill-race softlock** — `GameManager.RPCReportKillToMaster` used to `return` silently when the master's `CountdownActive` was still true. Countdown end is per-peer coroutine timing, so a death right at GO could pass the victim's `IsMatchStartProtectionActive` gate but hit the master's gate → no `RPCApplyKillResult` → victim never respawned (out of bounds forever). Now the master broadcasts new `[PunRPC] RPCRespawnWithoutScore` (no score change, no HUD animation, just `HandleMultiplayerRoundDeath`) instead of dropping. `_matchOver` drop unchanged (endGame follows anyway).
+2. **Pause-exit strand** — synced pause menu freezes BOTH peers (timeScale 0), but pause-menu "Exit to Main Menu" is a local-only exit; the remaining peer stayed frozen with no notification. Added `GameManager.OnPlayerLeftRoom` override → `ForceDismissInGamePauseMenu()` on MP levels.
+3. **RestartMusic use-after-destroy** — `GameManager.RestartMusic` had no null checks; `_audioSource` is destroyed by `waitThenEndGame` at game over and `EndMenuManager.CheckButton` (gamepad path) can still call it. Guarded.
+4. **hasNoLives robustness** — `GameState.hasNoLives` checked `== 0`; ScoreKeeper returns -1 for unknown names, so a name-key mismatch made SP unwinnable (score drifts negative forever). Now `!= DOESNT_EXIST && <= 0` (matches the MP path's `<= 0`).
+
+**Reviewed but deliberately NOT changed:** remote avatars intentionally kinematic+unsimulated (PhotonInputView owns position — do not "fix" SetCountdownPhysicsFrozen leaving them unsimulated); grey platforms resolve to the SAME color every match in MP (deterministic path-hash — sync-correct, no per-match variety); per-platform Debug.Log spam at scene load (`[Platform IDs]`, `[Grey Platform Init]`) — candidate for stripping in WebGL builds.
+
+**State left behind:** On `Multiplayer` @ `08387490` + uncommitted: `GameManager.cs`, `GameState.cs`, this file. Compile later verified clean (zero `error CS`) in 6000.4.4f1 Editor.log after user reopened with the right version. **Also this session:** wrote `GRENADE_FEATURE_SPEC.md` (paint-grenade power-up tech spec, user-requested) and created branch `feature/paint-grenade` off `Multiplayer` @ `08387490` — NOTE the branch predates the 4 fixes above; commit the fixes to `Multiplayer` and re-branch (or rebase) before implementing, as the spec's §0 instructs.
+
+**Next agent should:** (1) open in Unity 6000.4.4f1, confirm zero `error CS`; (2) 2-peer ParrelSync playtest: normal round kills, a kill immediately at GO (fix 1), pause → one peer exits (fix 2), game over → gamepad button on end menu (fix 3); (3) then user commits/pushes.
+
 ### 2026-06-19 — Post-Slice 5 roadmap: SP, gamepad, UI art, WebGL build pipeline
 **Agent session goal:** Implement post-Slice 5 roadmap (WebGL ship, re-enable SP, browser gamepad, UI polish).
 

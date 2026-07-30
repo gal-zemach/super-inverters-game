@@ -17,9 +17,9 @@ namespace Game{
 		private Controller[] controllers;
 		private MouseAimController _mouseAim;
 		
-		[SerializeField] 
+		[SerializeField]
 		public bool EnableSFX = false;
-		
+
 		private PlayerSFX _sfx;
 		
 
@@ -269,6 +269,8 @@ namespace Game{
 			return true;
 		}
 
+
+		public bool ControlsDisabled => controlsDisabled;
 
 		public void DisableControls(bool status)
 		{

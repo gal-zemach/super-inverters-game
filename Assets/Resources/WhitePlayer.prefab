@@ -439,6 +439,9 @@ GameObject:
   - component: {fileID: 8065567987658814661}
   - component: {fileID: 8847291056382719402}
   - component: {fileID: 1721980932247507854}
+  - component: {fileID: 4074660733948596348}
+  - component: {fileID: 1840366966653835787}
+  - component: {fileID: 4595178468605956876}
   m_Layer: 18
   m_Name: WhitePlayer
   m_TagString: player
@@ -772,6 +775,56 @@ MonoBehaviour:
   inStartScene: 0
   movingDirection: {x: 0, y: 0}
   aimDirection: {x: 0, y: 0}
+--- !u!114 &4074660733948596348
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe1242ba4726f4454bb8aa0a1f425701, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeInventory
+  grenadesPerPickup: 2
+--- !u!114 &1840366966653835787
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2098113e79d914e60b9dcbd94332ec6a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeThrower
+  grenadePrefab: {fileID: 544809818889671421, guid: f97b8cae466fc488da4bdaccd98b9fd4,
+    type: 3}
+  spawnOffset: 1.2
+--- !u!114 &4595178468605956876
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 062f0501e3e5045db97e3aacd1880aa7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeAimController
+  throwKey: 103
+  throwButton: 
+  throwForceMin: 8
+  throwForceMax: 53.8
+  chargeRampPerSecond: 1.2
+  beamOriginOffset: 1.2
+  beamLenMin: 2
+  beamLenMax: 12
+  beamWidthNear: 0.2
+  beamWidthFar: 1
 --- !u!1 &1415484695579008
 GameObject:
   m_ObjectHideFlags: 0

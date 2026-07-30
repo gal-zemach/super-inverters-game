@@ -14,6 +14,17 @@ namespace Game
 		[SerializeField] private Vector3 belowLivesWorldOffset = new Vector3(0f, -4.5f, 0f);
 		[SerializeField] private Vector2 screenFineTuneOffset = Vector2.zero;
 
+		[Header("Grenade count")]
+		[Tooltip("Height of each grenade icon shown under the lives row (canvas px).")]
+		[SerializeField] private float grenadeIconHeight = 26f;
+		[Tooltip("Horizontal step between icons — the width of each icon's invisible box, " +
+		         "so they read as separate slots.")]
+		[SerializeField] private float grenadeIconSpacing = 44f;
+		[SerializeField] private Vector2 grenadeRowOffset = new Vector2(0f, -6f);
+		[Tooltip("Show the burst-ammo bar line. Off = only the grenade icons render (the bar " +
+		         "still drives their anchoring).")]
+		[SerializeField] private bool showBurstBar = false;
+
 		private static readonly Color BlackFill = Color.black;
 		private static readonly Color BlackTrack = new Color(0f, 0f, 0f, 0.22f);
 		private static readonly Color WhiteFill = Color.white;
@@ -29,6 +40,11 @@ namespace Game
 		private PlayerManager _localPlayer;
 		private Framework? _barFramework;
 		private float _barWidth;
+		private RectTransform _grenadeRow;
+		private Image _grenadeRowBg;
+		private readonly System.Collections.Generic.List<Image> _grenadeIcons =
+			new System.Collections.Generic.List<Image>();
+		private Sprite _grenadeSprite;
 
 		private void Awake()
 		{
@@ -58,8 +74,68 @@ namespace Game
 			UpdateBarLayout(playerState.player_framework);
 			ApplyBarColors(playerState.player_framework);
 
+			_trackImage.enabled = showBurstBar;
+			_fillImage.enabled = showBurstBar;
+
 			float ammo01 = _localPlayer.BurstAmmo01;
 			_fillRect.sizeDelta = new Vector2(_barWidth * ammo01, barHeight);
+
+			UpdateGrenadeIcons(playerState.player_framework);
+		}
+
+		// One grenade icon per grenade in the local player's inventory, in a row under the
+		// lives. Black's row hugs the lives row's LEFT edge, White's hugs the RIGHT edge
+		// (mirroring the lives layout). An opaque white plate sits behind the icons so
+		// they never visually blend into level platforms.
+		private void UpdateGrenadeIcons(Framework framework)
+		{
+			if (_grenadeRow == null || _localPlayer == null) return;
+
+			var inv = _localPlayer.GetComponent<Powerups.GrenadeInventory>();
+			int count = inv != null ? inv.Count : 0;
+
+			if (_grenadeSprite == null)
+			{
+				var thrower = _localPlayer.GetComponent<Powerups.GrenadeThrower>();
+				if (thrower != null) _grenadeSprite = thrower.GrenadeSprite;
+			}
+
+			const float pad = 6f;
+			float iconW = grenadeIconHeight * 0.82f;
+
+			while (_grenadeIcons.Count < count)
+			{
+				var iconGo = new GameObject("GrenadeIcon",
+					typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+				iconGo.transform.SetParent(_grenadeRow, false);
+				var rt = iconGo.GetComponent<RectTransform>();
+				rt.anchorMin = new Vector2(0f, 1f);
+				rt.anchorMax = new Vector2(0f, 1f);
+				rt.pivot = new Vector2(0f, 1f);
+				rt.sizeDelta = new Vector2(iconW, grenadeIconHeight);
+				var img = iconGo.GetComponent<Image>();
+				img.raycastTarget = false;
+				img.preserveAspect = true;
+				_grenadeIcons.Add(img);
+			}
+
+			bool anyShown = count > 0 && _grenadeSprite != null;
+			float plateW = pad * 2f + (count > 0 ? (count - 1) * grenadeIconSpacing + iconW : 0f);
+			float plateH = pad * 2f + grenadeIconHeight;
+
+			_grenadeRow.sizeDelta = new Vector2(plateW, plateH);
+			_grenadeRow.anchoredPosition = new Vector2(
+				(framework == Framework.BLACK ? 0f : _barWidth - plateW) + grenadeRowOffset.x,
+				grenadeRowOffset.y);
+			if (_grenadeRowBg != null) _grenadeRowBg.enabled = anyShown;
+
+			for (int i = 0; i < _grenadeIcons.Count; i++)
+			{
+				var rt = _grenadeIcons[i].rectTransform;
+				rt.anchoredPosition = new Vector2(pad + i * grenadeIconSpacing, -pad);
+				if (_grenadeIcons[i].sprite == null) _grenadeIcons[i].sprite = _grenadeSprite;
+				_grenadeIcons[i].enabled = anyShown && i < count;
+			}
 		}
 
 		private void ApplyBarColors(Framework framework)
@@ -241,6 +317,20 @@ namespace Game
 			_fillImage = fillGo.GetComponent<Image>();
 			_fillImage.color = WhiteFill;
 			_fillImage.raycastTarget = false;
+
+			var rowGo = new GameObject("GrenadeRow",
+				typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+			rowGo.transform.SetParent(barGo.transform, false);
+			_grenadeRow = rowGo.GetComponent<RectTransform>();
+			_grenadeRow.anchorMin = new Vector2(0f, 0f);
+			_grenadeRow.anchorMax = new Vector2(0f, 0f);
+			_grenadeRow.pivot = new Vector2(0f, 1f);
+			_grenadeRow.anchoredPosition = grenadeRowOffset;
+			_grenadeRow.sizeDelta = Vector2.zero;
+			_grenadeRowBg = rowGo.GetComponent<Image>();
+			_grenadeRowBg.color = Color.white;   // opaque plate so icons never blend into platforms
+			_grenadeRowBg.raycastTarget = false;
+			_grenadeRowBg.enabled = false;
 
 			_barRoot.gameObject.SetActive(false);
 		}

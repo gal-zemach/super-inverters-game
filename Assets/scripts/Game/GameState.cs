@@ -47,7 +47,10 @@ namespace Game{
 
 		public bool hasNoLives(string killedPlayerName)
 		{
-			return scoreKeeper.getScore(killedPlayerName) == 0;
+			// <= 0 (not == 0) so a score that ever skips past zero still ends the
+			// game; unknown names (getScore returns DOESNT_EXIST) never do.
+			int score = scoreKeeper.getScore(killedPlayerName);
+			return score != scoreKeeper.DOESNT_EXIST && score <= 0;
 		}
 
 		public void decreaseScore(string playerName)

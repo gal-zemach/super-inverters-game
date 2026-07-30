@@ -40,6 +40,11 @@ public class EndMenuManager : MonoBehaviour
 
 		foreach (var button in panel.GetComponentsInChildren<Button>(true))
 		{
+			// The pause menu shares this component for controller nav, and its
+			// runtime-built buttons (under "MenuButtons") must keep the uniform
+			// placeholder look — the name filter below would hijack "Back to
+			// Main Menu" into game-over word art.
+			if (button.transform.parent != null && button.transform.parent.name == "MenuButtons") continue;
 			if (!button.name.Contains("MainMenu") && !button.name.Contains("Back")) continue;
 			var image = button.GetComponent<Image>();
 			if (image == null) continue;
@@ -105,7 +110,10 @@ public class EndMenuManager : MonoBehaviour
 	public void setAnimation(int playerId) {
 		if (titleAnimator == null)
 			return;
-		
+
+		// Game over freezes Time.timeScale (grenades must hang mid-air, like pause);
+		// the win word-art still has to animate, so run this animator on unscaled time.
+		titleAnimator.updateMode = AnimatorUpdateMode.UnscaledTime;
 		titleAnimator.SetInteger("winId", playerId);
 	}
 

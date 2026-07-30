@@ -68,18 +68,22 @@ public class InGamePauseMenu : MonoBehaviour
 		WireEndMenuManager();
 	}
 
+	// Translucent grey overlay, NOT an opaque wall: the frozen game (grenades mid-air,
+	// players, platforms) must stay visible behind the pause menu.
+	private const float BackgroundAlpha = 0.6f;
+
 	private static void ApplyDesignedBackground(Transform panel)
 	{
-		var bg = UiArt.PauseBackground;
-		if (bg == null) return;
-
 		var panelImage = panel.GetComponent<Image>();
-		if (panelImage != null)
+		if (panelImage == null) return;
+
+		var bg = UiArt.PauseBackground;
+		if (bg != null)
 		{
 			panelImage.sprite = bg;
 			panelImage.type = Image.Type.Sliced;
-			panelImage.color = Color.white;
 		}
+		panelImage.color = new Color(1f, 1f, 1f, BackgroundAlpha);
 	}
 
 	private static void HideLegacyMenu(Transform panel)
@@ -118,14 +122,16 @@ public class InGamePauseMenu : MonoBehaviour
 		containerRect.localScale = Vector3.one;
 
 		_resumeButton = CreateMenuButton(container.transform, "Resume", 0f,
-			UiArt.PauseResume, () => _gameManager?.ToggleInGamePauseMenu());
+			() => _gameManager?.ToggleInGamePauseMenu());
 		_copyAddressButton = CreateMenuButton(container.transform, "Copy Room Address", -90f,
-			null, OnCopyRoomAddressClicked);
-		_exitButton = CreateMenuButton(container.transform, "Exit to Main Menu", -180f,
-			UiArt.PauseExit, OnExitToMainMenuClicked);
+			OnCopyRoomAddressClicked);
+		_exitButton = CreateMenuButton(container.transform, "Back to Main Menu", -180f,
+			OnExitToMainMenuClicked);
 	}
 
-	private static Button CreateMenuButton(Transform parent, string label, float yOffset, Sprite artSprite, UnityEngine.Events.UnityAction onClick)
+	// All three buttons share the same placeholder look (grey box + text label) so the
+	// menu reads as one set; the designed word-art sprites are out until a full art pass.
+	private static Button CreateMenuButton(Transform parent, string label, float yOffset, UnityEngine.Events.UnityAction onClick)
 	{
 		var buttonGo = new GameObject(label + " button", typeof(RectTransform), typeof(Image), typeof(Button));
 		buttonGo.transform.SetParent(parent, false);
@@ -139,22 +145,12 @@ public class InGamePauseMenu : MonoBehaviour
 		rect.localScale = new Vector3(ButtonScale, ButtonScale, ButtonScale);
 
 		var image = buttonGo.GetComponent<Image>();
-		if (artSprite != null)
+		image.color = ButtonColor;
+		var sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+		if (sprite != null)
 		{
-			image.sprite = artSprite;
-			image.type = Image.Type.Simple;
-			image.color = Color.white;
-			image.preserveAspect = true;
-		}
-		else
-		{
-			image.color = ButtonColor;
-			var sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
-			if (sprite != null)
-			{
-				image.sprite = sprite;
-				image.type = Image.Type.Sliced;
-			}
+			image.sprite = sprite;
+			image.type = Image.Type.Sliced;
 		}
 
 		var labelGo = new GameObject("Label", typeof(RectTransform), typeof(Text));
@@ -167,7 +163,7 @@ public class InGamePauseMenu : MonoBehaviour
 
 		var text = labelGo.GetComponent<Text>();
 		EnsureTextFont(text);
-		text.text = artSprite != null ? string.Empty : label;
+		text.text = label;
 		text.fontSize = 22;
 		text.alignment = TextAnchor.MiddleCenter;
 		text.color = Color.black;
