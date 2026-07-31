@@ -178,7 +178,15 @@ Multiplayer LOBBY scene (copy-room-ID button first, as today) → guest joins �
 `TryLoadGameScene` loads the CHOSEN level (replaces hardwired level_1-multiplayer;
 guest follows via AutomaticallySyncScene). Wire-up points: MainMenuUI (set flag),
 SceneLoader.LoadSceneByName (intercept level pick in MP mode), MultiplayerBootstrap
-(use ChosenLevel). Clear the flag when returning to main_menu. **B.** Retrofit editor pass over level_1..5 (PhotonView,
+(use ChosenLevel). Clear the flag when returning to main_menu.
+**Also (user request): the game-over screen gets a "Change Level" option** so rematches
+aren't locked to the same arena. SP: button → level_menu (difficulty/PlayerPrefs kept).
+MP: master-only button → level_menu in pick mode → PhotonNetwork.LoadLevel(chosen), guest
+follows via AutomaticallySyncScene (guest keeps the plain replay/exit row; while the
+master picks, the guest just waits on the end screen — v1). Scores already reset (endGame
+destroys the ScoreKeeper); the Awake timeScale=1 safety net covers the frozen end screen.
+EndMenuManager/EndGameMenu prefab is the wire-up point (mind the runtime-built pause-menu
+button filter in ApplyDesignedGameOverArt). **B.** Retrofit editor pass over level_1..5 (PhotonView,
 MultiplayerSpawner + spawn arrays, remove scene players when InRoom). **C.** G4
 master-authoritative pickups + ClearAllPickups wiring (kickoff plan in the session-4
 entry). **D.** Two-editor verification per level (paint-walk test is the desync detector;
