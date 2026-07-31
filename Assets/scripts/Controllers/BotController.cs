@@ -87,6 +87,7 @@ namespace Controllers
         private int _histCount;
 
         private float _nextThinkTime;
+        private bool _hasLandedSinceSpawn;
         private Vector2 _desiredAim = Vector2.right;
         private int _patrolDir = 1;      // oscillation direction while in range (keeps the bot moving)
         private float _patrolFlipTime;   // next time to flip _patrolDir
@@ -157,6 +158,24 @@ namespace Controllers
                 _fireIntent = false;
                 base.Update();
                 return;
+            }
+
+            // Spawn settle: players spawn a couple of units above their platform,
+            // and while airborne the edge guard is bypassed (air control). Steering
+            // toward the opponent during that first fall drifted the bot past its
+            // platform's edge into the void before it ever landed — fall straight
+            // down first, fight after touching ground once.
+            if (!_hasLandedSinceSpawn)
+            {
+                if (_self != null && _self.isGrounded) _hasLandedSinceSpawn = true;
+                else
+                {
+                    _moveX = 0f;
+                    _jumpQueued = false;
+                    _fireHeld = false;
+                    base.Update();
+                    return;
+                }
             }
 
             if (_opponent == null) AcquireOpponent();
@@ -269,15 +288,27 @@ namespace Controllers
             return 0;                                                        // abyss: hold
         }
 
-        // Any own-colour / floor platform to land on within a horizontal jump window.
+        // Any STATIC own-colour / floor platform to land on within a horizontal jump
+        // window. Movers never count: even one seen 4 units away departs mid-leap
+        // (distance-filtered movers still killed the bot 5x/30s on level_2).
+        // Arriving on a mover needs real timing — future nav work, not a heuristic.
         private bool StandableWithinJumpReach(Vector2 pos, int dir)
         {
             for (float ahead = 3f; ahead <= jumpReach; ahead += 2f)
             {
                 Vector2 p = pos + new Vector2(dir * ahead, 1f);
-                if (HasGround(p, _standableMask, 6f)) return true;
+                var hit = Physics2D.Raycast(p, Vector2.down, 6f, _standableMask);
+                if (hit.collider != null && IsStaticGround(hit)) return true;
             }
             return false;
+        }
+
+        // The floor and non-moving platforms hold still long enough to be jump
+        // targets; anything with a live PlatformManager path does not.
+        private static bool IsStaticGround(RaycastHit2D hit)
+        {
+            var pm = hit.collider.GetComponentInParent<PlatformManager>();
+            return pm == null || !pm.isMovingPlatform;
         }
 
         // Falling: steer toward standable ground below; if only opponent-colour
@@ -431,13 +462,19 @@ namespace Controllers
         // up, -1 / +1 = up-and-to-that-side, NoHigherPlatform = none within reach.
         private int HigherPlatformSide(Vector2 pos)
         {
+            // Straight up may target paintable too (worst case we land back where
+            // we jumped from, and the shot may flip it). Sideways climbs steer off
+            // the current platform, so they must target ground that will actually
+            // hold us: own-colour/floor AND static. Leaping at a black platform
+            // hoping to paint it mid-fall was the bot's remaining suicide path.
             Vector2 from = pos + Vector2.up * 1.2f;
-            int mask = _standableMask | _paintableMask;
-            if (Physics2D.Raycast(from, Vector2.up, jumpReach, mask).collider != null) return 0;
+            var up = Physics2D.Raycast(from, Vector2.up, jumpReach, _standableMask | _paintableMask);
+            if (up.collider != null && (IsStaticGround(up) || up.distance <= 4f)) return 0;
             for (int s = -1; s <= 1; s += 2)
             {
                 Vector2 dir = new Vector2(s * 0.7f, 1f).normalized;
-                if (Physics2D.Raycast(from, dir, jumpReach, mask).collider != null) return s;
+                var hit = Physics2D.Raycast(from, dir, jumpReach, _standableMask);
+                if (hit.collider != null && IsStaticGround(hit)) return s;
             }
             return NoHigherPlatform;
         }
