@@ -149,7 +149,36 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
-### 2026-08-01 — S1 + S2 COMPLETE: single-player fully playable on all 5 levels, bot fights everywhere (incl. grenades)
+### 2026-08-01 (later) — S3 KICKOFF: branch + recon + plan (retrofit decision made)
+
+> Branch **`feature/mp-level-select`** off Multiplayer@75e71180 (PR #7 = S1/S2 merged;
+> also: PR #6 was accidentally merged into MASTER — restored by force-push to a7f912b6,
+> verified clean. Triple-check PR bases in this repo; GitHub defaults to master.)
+
+**User decision: RETROFIT the five level_1..5 scenes to serve BOTH modes** (no duplicate
+level_N-multiplayer scenes; level_1-multiplayer becomes legacy/template).
+
+Recon — delta between level_1-multiplayer and level_1 (per-scene retrofit checklist):
+- SP scenes LACK: `PhotonView` on Game (GameManager RPCs need it; scene viewIDs are
+  consistent — both peers load the same file); `MultiplayerSpawner` (add next to the
+  existing standalone PowerupSpawner object; per-scene `targetSceneName` gate + per-level
+  blackSpawnPositions/whiteSpawnPositions — Scene-view drag handles exist).
+- SP scenes HAVE scene-placed {Black,White}Player prefab INSTANCES (with PhotonViews!) —
+  in a room these must be removed before MultiplayerSpawner instantiates networked ones.
+- Already room-aware from S1/S2 (keep, no work): PowerupSpawner (CanSpawn),
+  SpawnPlatformPainter (InRoom-gated), BotController (self-disables InRoom),
+  ShootCooldownHud (IsMine binding).
+- GameManager.gameSceneName empty in SP scenes → ReloadMatchScene falls back to active
+  scene = generalizes to any level.
+
+Plan (phases): **A.** Level select in MP — reuse level_menu: on room full, master
+LoadLevel("level_menu") (AutomaticallySyncScene carries guest), guest gets a "host is
+choosing" state with input disabled, SceneLoader gets an InRoom branch (LoadLevel), hide
+BotDifficultyUI in-room. **B.** Retrofit editor pass over level_1..5 (PhotonView,
+MultiplayerSpawner + spawn arrays, remove scene players when InRoom). **C.** G4
+master-authoritative pickups + ClearAllPickups wiring (kickoff plan in the session-4
+entry). **D.** Two-editor verification per level (paint-walk test is the desync detector;
+clone_6). NOT STARTED beyond the branch — next agent begins with Phase A.
 
 > **EOD STATUS:** branch `feature/single-player`, all pushed (`fb91f542` + docs). PR #5
 > (paint-grenade) was merged into `Multiplayer` with a merge commit at the start of this
