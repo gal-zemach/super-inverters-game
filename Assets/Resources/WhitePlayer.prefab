@@ -845,7 +845,7 @@ MonoBehaviour:
   inStartScene: 0
   movingDirection: {x: 0, y: 0}
   aimDirection: {x: 0, y: 0}
-  difficultyTier: 6
+  difficultyTier: 4
   thinkInterval: 0.1
   engageRange: 80
   preferredRange: 10
@@ -854,7 +854,6 @@ MonoBehaviour:
   jumpReach: 12
   groundProbeDistance: 4
   feetAimOffset: 1
-  showDebugWindow: 1
 --- !u!1 &1415484695579008
 GameObject:
   m_ObjectHideFlags: 0

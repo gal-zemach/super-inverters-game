@@ -23,17 +23,12 @@ namespace Controllers
     // once. The bot therefore needs no separate paint planner in v1.
     public class BotController : Controller
     {
-        // ---- Difficulty: six discrete tiers, easiest (1) → hardest (6) --------
-        // The selected tier SHIPS (serialized). Runtime tier changes (keys + the
-        // on-screen window) are editor-only debug aids, compiled out of builds.
-        [SerializeField, Range(1, 10), Tooltip("Bot difficulty tier: 1 = easiest, 10 = hardest.")]
+        // ---- Difficulty: ten discrete tiers, easiest (1) → hardest (10) -------
+        // The player picks the tier on the level-select screen (BotDifficultyUI);
+        // Awake overwrites this serialized value with that choice, so the field
+        // is only the inspector/testing fallback.
+        [SerializeField, Range(1, 10), Tooltip("Bot difficulty tier: 1 = easiest, 10 = hardest. Overridden in single-player by the level-select choice.")]
         private int difficultyTier = 4;
-
-        // A tier chosen during the play session must survive the per-round scene
-        // reload (the player is re-instantiated from the prefab each round, which
-        // would reset difficultyTier to the serialized default). -1 = no choice
-        // made yet this session.
-        private static int s_sessionTier = -1;
 
         // Per-tier presets (index = tier-1). Parallel arrays: tier N reads [N-1]. 10 tiers.
         private static readonly float[] TierReactionDelay = { 0.70f, 0.60f, 0.50f, 0.42f, 0.34f, 0.27f, 0.20f, 0.14f, 0.09f, 0.05f };
@@ -68,10 +63,6 @@ namespace Controllers
         private float groundProbeDistance = 4f;
         [SerializeField, Tooltip("Aim this far below the opponent's origin when they're grounded, to paint their platform.")]
         private float feetAimOffset = 1.0f;
-
-        [Header("Debug")]
-        [SerializeField, Tooltip("Show the editor-only on-screen difficulty window during play.")]
-        private bool showDebugWindow = true;
 
         // ---- Runtime outputs (read by the Controller interface) ---------------
         private float _moveX;
@@ -128,9 +119,9 @@ namespace Controllers
             DisableComponent<PS4Controller>();
             DisableComponent<Game.Powerups.GrenadeAimController>(); // raw KeyCode.G, outside the Controller seam
 
-            // Restore the difficulty picked earlier this session (rounds reload
-            // the scene, so the fresh prefab instance starts at the default).
-            if (s_sessionTier >= 1) difficultyTier = s_sessionTier;
+            // Apply the difficulty picked on the level-select screen (persisted,
+            // so it also survives the per-round scene reload).
+            difficultyTier = Game.BotDifficulty.Tier;
         }
 
         protected override void Start()
@@ -153,9 +144,6 @@ namespace Controllers
 
         protected override void Update()
         {
-#if UNITY_EDITOR
-            HandleDebugDifficultyKeys();
-#endif
             if (PhotonNetwork.InRoom) { enabled = false; return; }
 
             // Frozen phases (countdown / disabled controls): emit neutral inputs
@@ -480,42 +468,5 @@ namespace Controllers
             return new Vector2(v.x * cs - v.y * sn, v.x * sn + v.y * cs);
         }
 
-#if UNITY_EDITOR
-        // Editor-only difficulty toggle for playtesting: '[' easier, ']' harder
-        // (clamped 1..6). Compiled out of player builds.
-        private void HandleDebugDifficultyKeys()
-        {
-            if (Input.GetKeyDown(KeyCode.RightBracket)) SetTier(difficultyTier + 1);
-            else if (Input.GetKeyDown(KeyCode.LeftBracket)) SetTier(difficultyTier - 1);
-        }
-
-        private void SetTier(int tier)
-        {
-            difficultyTier = Mathf.Clamp(tier, 1, TierCount);
-            s_sessionTier = difficultyTier;   // remember across round reloads
-            Debug.Log($"[BotController] Difficulty tier → {difficultyTier} " +
-                      $"(reaction {ReactionDelay:0.00}s, aimErr {AimErrorDeg:0.#}°, " +
-                      $"burst {BurstOn:0.00}/{BurstOff:0.00}, aggr {Aggression:0.00})");
-        }
-
-        // On-screen debug window: current tier + easier/harder buttons.
-        private void OnGUI()
-        {
-            if (!showDebugWindow) return;
-
-            const float w = 208f, h = 78f;
-            var box = new Rect(12f, 12f, w, h);
-            GUI.Box(box, "AI Bot — debug");
-
-            GUI.Label(new Rect(box.x + 12f, box.y + 24f, w - 24f, 20f),
-                $"Difficulty: {difficultyTier} / {TierCount}");
-
-            if (GUI.Button(new Rect(box.x + 12f, box.y + 46f, 46f, 22f), "◀ easy"))
-                SetTier(difficultyTier - 1);
-            if (GUI.Button(new Rect(box.x + 62f, box.y + 46f, 52f, 22f), "hard ▶"))
-                SetTier(difficultyTier + 1);
-            GUI.Label(new Rect(box.x + 120f, box.y + 48f, w - 130f, 20f), "or  [  ]");
-        }
-#endif
     }
 }
