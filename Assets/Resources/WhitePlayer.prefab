@@ -845,7 +845,7 @@ MonoBehaviour:
   inStartScene: 0
   movingDirection: {x: 0, y: 0}
   aimDirection: {x: 0, y: 0}
-  difficultyTier: 7
+  difficultyTier: 6
   thinkInterval: 0.1
   engageRange: 80
   preferredRange: 10

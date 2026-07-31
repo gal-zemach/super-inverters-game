@@ -29,6 +29,12 @@ namespace Controllers
         [SerializeField, Range(1, 10), Tooltip("Bot difficulty tier: 1 = easiest, 10 = hardest.")]
         private int difficultyTier = 4;
 
+        // A tier chosen during the play session must survive the per-round scene
+        // reload (the player is re-instantiated from the prefab each round, which
+        // would reset difficultyTier to the serialized default). -1 = no choice
+        // made yet this session.
+        private static int s_sessionTier = -1;
+
         // Per-tier presets (index = tier-1). Parallel arrays: tier N reads [N-1]. 10 tiers.
         private static readonly float[] TierReactionDelay = { 0.70f, 0.60f, 0.50f, 0.42f, 0.34f, 0.27f, 0.20f, 0.14f, 0.09f, 0.05f };
         private static readonly float[] TierAimErrorDeg   = { 22f,   18f,   15f,   12f,   9f,    7f,    5f,    3.5f,  2f,    1f    };
@@ -121,6 +127,10 @@ namespace Controllers
             DisableComponent<KeyboardController>();
             DisableComponent<PS4Controller>();
             DisableComponent<Game.Powerups.GrenadeAimController>(); // raw KeyCode.G, outside the Controller seam
+
+            // Restore the difficulty picked earlier this session (rounds reload
+            // the scene, so the fresh prefab instance starts at the default).
+            if (s_sessionTier >= 1) difficultyTier = s_sessionTier;
         }
 
         protected override void Start()
@@ -482,6 +492,7 @@ namespace Controllers
         private void SetTier(int tier)
         {
             difficultyTier = Mathf.Clamp(tier, 1, TierCount);
+            s_sessionTier = difficultyTier;   // remember across round reloads
             Debug.Log($"[BotController] Difficulty tier → {difficultyTier} " +
                       $"(reaction {ReactionDelay:0.00}s, aimErr {AimErrorDeg:0.#}°, " +
                       $"burst {BurstOn:0.00}/{BurstOff:0.00}, aggr {Aggression:0.00})");
