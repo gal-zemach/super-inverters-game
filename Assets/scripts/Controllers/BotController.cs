@@ -64,6 +64,16 @@ namespace Controllers
         [SerializeField, Tooltip("Aim this far below the opponent's origin when they're grounded, to paint their platform.")]
         private float feetAimOffset = 1.0f;
 
+        [Header("Grenades")]
+        [SerializeField, Tooltip("Seconds between grenade throws, random in [min, max].")]
+        private float grenadeCooldownMin = 6f;
+        [SerializeField] private float grenadeCooldownMax = 12f;
+        [SerializeField, Tooltip("Horizontal distance band for considering a grenade throw. The " +
+                 "min keeps the paint splash off the bot's own platform; it sits just under " +
+                 "preferredRange so the bot's patrol band overlaps the throw band.")]
+        private float grenadeRangeMin = 8f;
+        [SerializeField] private float grenadeRangeMax = 55f;
+
         // ---- Runtime outputs (read by the Controller interface) ---------------
         private float _moveX;
         private Vector2 _baseAim = Vector2.right;   // smoothed aim toward the target
@@ -90,6 +100,9 @@ namespace Controllers
         private bool _hasLandedSinceSpawn;
         private Collider2D _rideCollider;   // mover we're riding (or hovering above mid-descent)
         private float _airControlUntil;     // airborne steering allowed until this time (set by QueueJump)
+        private Game.Powerups.GrenadeThrower _grenadeThrower;
+        private Game.Powerups.GrenadeInventory _grenadeInventory;
+        private float _nextGrenadeTime;
         private const float MaroonedSeconds = 1f;
         private float _nextStuckCheck;
         private float _stuckAnchorX = float.PositiveInfinity; // x at the previous stuck-check
@@ -145,6 +158,12 @@ namespace Controllers
                 ? Values.WHITE_PLATFORM_LAYER : Values.BLACK_PLATFORM_LAYER;
             _standableMask = LayerMask.GetMask(ownPlatformLayer, "floor");
             _paintableMask = LayerMask.GetMask(enemyPlatformLayer);
+
+            _grenadeThrower = GetComponent<Game.Powerups.GrenadeThrower>();
+            _grenadeInventory = GetComponent<Game.Powerups.GrenadeInventory>();
+            // Short initial delay: rounds reload the scene, and the full cooldown
+            // often outlives a round entirely (the bot never threw at all).
+            _nextGrenadeTime = Time.time + Random.Range(2f, 5f);
 
             AcquireOpponent();
         }
@@ -234,6 +253,10 @@ namespace Controllers
             // Fight: shoot whenever the opponent is within engage range.
             float absDx = Mathf.Abs(dx);
             if (absDx <= engageRange) _fireIntent = true;
+
+            // Grenade: an occasional 45° lob at a grounded opponent (works from
+            // static ground and from a ride alike — throwing is input-free).
+            MaybeThrowGrenade(pos, target, absDx);
 
             // Riding a MOVING platform: the ground itself is sliding — the patrol
             // and climb heuristics all assume static footing and walk the bot off
@@ -604,6 +627,33 @@ namespace Controllers
             var view = GetComponent<PlayerView>();
             bool left = view != null && view.facingLeft;
             return left ? Vector2.left : Vector2.right;
+        }
+
+        // Occasional grenade lob. 45° arc toward the opponent: flat-ground
+        // ballistics give speed v = R * sqrt(g / (R - dy)) for horizontal range R
+        // and height difference dy (positive = target above), nudged by the same
+        // per-tier aim error the shots use, clamped to the thrower's force band.
+        private void MaybeThrowGrenade(Vector2 pos, Vector2 target, float absDx)
+        {
+            if (Time.time < _nextGrenadeTime) return;
+            if (_grenadeThrower == null || _grenadeInventory == null) return;
+            if (!_grenadeInventory.HasGrenade || _grenadeThrower.HasAirborne) return;
+            if (absDx < grenadeRangeMin || absDx > grenadeRangeMax) return;
+            if (!OpponentGrounded()) return;
+
+            float dy = target.y - pos.y;
+            if (absDx - dy < 2f) return; // target too high above for a 45° lob
+
+            _nextGrenadeTime = Time.time + Random.Range(grenadeCooldownMin, grenadeCooldownMax);
+
+            float g = Mathf.Abs(Physics2D.gravity.y); // grenade gravityScale is 1
+            float speed = absDx * Mathf.Sqrt(g / (absDx - dy));
+            speed *= 1f + Random.Range(-AimErrorDeg, AimErrorDeg) * 0.01f; // tier wobble
+            speed = Mathf.Clamp(speed, 8f, 36f);
+
+            Vector2 dir = new Vector2(Mathf.Sign(target.x - pos.x), 1f).normalized;
+            _grenadeThrower.Throw(dir, speed);
+            _grenadeInventory.Consume();
         }
 
         // Escape a stuck spot. Preferred: drop THROUGH the current platform (the

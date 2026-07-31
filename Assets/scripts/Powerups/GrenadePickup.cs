@@ -113,11 +113,6 @@ namespace Game.Powerups
             PhotonView pv = other.GetComponentInParent<PhotonView>();
             if (pv != null && !pv.IsMine) return;
 
-            // Single-player: the bot doesn't use grenades (yet) — don't let it eat
-            // pickups meant for the human. (Offline, both players pass the IsMine gate.)
-            var bot = other.GetComponentInParent<Controllers.BotController>();
-            if (bot != null && bot.isActiveAndEnabled) return;
-
             GrenadeInventory inv = other.GetComponentInParent<GrenadeInventory>();
             if (inv == null) return;
 
