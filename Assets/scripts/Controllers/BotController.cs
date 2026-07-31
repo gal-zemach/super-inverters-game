@@ -90,6 +90,10 @@ namespace Controllers
         private bool _hasLandedSinceSpawn;
         private Collider2D _rideCollider;   // mover we're riding (or hovering above mid-descent)
         private float _airControlUntil;     // airborne steering allowed until this time (set by QueueJump)
+        private const float MaroonedSeconds = 2.5f;
+        private float _nextStuckCheck;
+        private float _stuckAnchorX = float.PositiveInfinity; // x at the previous stuck-check
+        private float _dropUntil;           // getDown held until this time (drop-through escape)
         private Vector2 _desiredAim = Vector2.right;
         private int _patrolDir = 1;      // oscillation direction while in range (keeps the bot moving)
         private float _patrolFlipTime;   // next time to flip _patrolDir
@@ -274,6 +278,19 @@ namespace Controllers
                 moveDir = SafePatrolDir(pos);
             _moveX = moveDir;
 
+            // Marooned watchdog: a spawn island (no patrol room, no static leap
+            // target, no climb — level_2's spawn islands) parks the bot forever
+            // now that blind airborne chasing is forbidden. Keyed on actual net
+            // DISPLACEMENT — micro-patrolling a 5-unit island reads as "moving"
+            // to any input-based signal.
+            if (Time.time >= _nextStuckCheck)
+            {
+                bool stuck = _self.isGrounded && Mathf.Abs(pos.x - _stuckAnchorX) < 3f;
+                _stuckAnchorX = pos.x;
+                _nextStuckCheck = Time.time + MaroonedSeconds;
+                if (stuck && absDx > preferredRange) TryEscapeMaroon(pos, towardOpp);
+            }
+
             DecideVertical(pos, target);
         }
 
@@ -301,9 +318,9 @@ namespace Controllers
                 _patrolFlipTime = Time.time + Random.Range(0.4f, 1.0f);
                 _patrolDir = -_patrolDir;
             }
-            if (HasGround(pos + new Vector2(_patrolDir * edgeLookAhead, 0.2f), _standableMask)) return _patrolDir;
-            if (HasGround(pos + new Vector2(-_patrolDir * edgeLookAhead, 0.2f), _standableMask)) { _patrolDir = -_patrolDir; return _patrolDir; }
-            return 0; // boxed in on a tiny platform — DecideVertical's climb gets us out
+            if (HasStaticGround(pos + new Vector2(_patrolDir * edgeLookAhead, 0.2f))) return _patrolDir;
+            if (HasStaticGround(pos + new Vector2(-_patrolDir * edgeLookAhead, 0.2f))) { _patrolDir = -_patrolDir; return _patrolDir; }
+            return 0; // boxed in on a tiny platform — the marooned watchdog gets us out
         }
 
         // Never walk off a ledge into the void. If own-colour ground continues
@@ -321,8 +338,14 @@ namespace Controllers
             if (!_self.isGrounded)
                 return Time.time <= _airControlUntil ? moveDir : 0;
 
+            // Stepping requires STATIC ground ahead: a mover passing under the
+            // next step departs mid-stride and strands the bot on an
+            // unpredictable ride it later falls from (4 deaths/40s on level_2).
+            // Movers are boarded only by spawning/landing on them — the rider
+            // logic then takes over.
             Vector2 probe = pos + new Vector2(moveDir * edgeLookAhead, 0.2f);
-            if (HasGround(probe, _standableMask)) return moveDir;            // safe to step
+            var stepHit = Physics2D.Raycast(probe, Vector2.down, groundProbeDistance, _standableMask);
+            if (stepHit.collider != null && IsStaticGround(stepHit)) return moveDir;
 
             // Gap ahead. If a standable platform sits within a jump's reach in
             // that direction, LEAP it — keep moveDir so air control carries us
@@ -413,8 +436,28 @@ namespace Controllers
                 return;
             }
 
-            _moveX = target.x >= pos.x ? 1 : -1;
-            QueueJump();
+            // Nothing below: steer toward the NEAREST footing to either side —
+            // steering toward the opponent here was a built-in chase-drift that
+            // ferried the falling bot across half the map to its death. Prefer
+            // static ground; take a mover only if that's all there is.
+            int rescueDir = 0;
+            float bestOff = float.MaxValue;
+            for (int pass = 0; pass < 2 && rescueDir == 0; pass++)
+            {
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    for (float off = 2f; off <= 14f; off += 3f)
+                    {
+                        var h = Physics2D.Raycast(pos + new Vector2(s * off, 0f), Vector2.down, 30f, _standableMask);
+                        if (h.collider == null) continue;
+                        if (pass == 0 && !IsStaticGround(h)) continue;
+                        if (off < bestOff) { bestOff = off; rescueDir = s; }
+                        break;
+                    }
+                }
+            }
+            _moveX = rescueDir;
+            if (rescueDir != 0) QueueJump();
         }
 
         // ---- Controller interface (read by PlayerManager) ---------------------
@@ -437,7 +480,9 @@ namespace Controllers
         }
 
         public override bool shoot() => _fireHeld;
-        public override bool getDown() => false;   // dropping through our own platform is suicide
+        // Drop-through is normally suicide, EXCEPT as the marooned escape (held
+        // briefly by TryEscapeMaroon after verifying static ground waits below).
+        public override bool getDown() => Time.time <= _dropUntil;
         public override bool pauseMenu() => false; // must be constant false (polled without an enabled check)
 
         // ---- Fire cadence -----------------------------------------------------
@@ -516,6 +561,14 @@ namespace Controllers
 
         private bool HasGround(Vector2 origin, int mask) => HasGround(origin, mask, groundProbeDistance);
 
+        // Standable AND static — the only ground safe to walk toward (see the
+        // edge-guard step comment; a passing mover is not a footpath).
+        private bool HasStaticGround(Vector2 origin)
+        {
+            var hit = Physics2D.Raycast(origin, Vector2.down, groundProbeDistance, _standableMask);
+            return hit.collider != null && IsStaticGround(hit);
+        }
+
         private bool HasGround(Vector2 origin, int mask, float dist)
         {
             // Live raycast every call — paint moves platforms between layers, so
@@ -551,6 +604,41 @@ namespace Controllers
             var view = GetComponent<PlayerView>();
             bool left = view != null && view.facingLeft;
             return left ? Vector2.left : Vector2.right;
+        }
+
+        // Escape a stuck spot. Preferred: drop THROUGH the current platform (the
+        // down input) when a static surface waits below — level_2's spawn
+        // islands sit directly above their side's big platform, and drop-through
+        // is the designed way off them. Fallback: jump-dive sideways toward any
+        // static platform below within jump reach (paintable counts — the
+        // falling rescue aims down and paints before landing).
+        private void TryEscapeMaroon(Vector2 pos, int towardOpp)
+        {
+            var ground = Physics2D.Raycast(pos, Vector2.down, groundProbeDistance, _standableMask);
+            if (ground.collider != null)
+            {
+                Vector2 under = new Vector2(pos.x, ground.point.y - 1f);
+                var below = Physics2D.Raycast(under, Vector2.down, 40f, _standableMask | _paintableMask);
+                if (below.collider != null && IsStaticGround(below))
+                {
+                    _dropUntil = Time.time + 0.35f;
+                    return;
+                }
+            }
+
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                int dir = attempt == 0 ? towardOpp : -towardOpp;
+                for (float ahead = 3f; ahead <= jumpReach; ahead += 2f)
+                {
+                    Vector2 probe = pos + new Vector2(dir * ahead, 1f);
+                    var hit = Physics2D.Raycast(probe, Vector2.down, 40f, _standableMask | _paintableMask);
+                    if (hit.collider == null || !IsStaticGround(hit)) continue;
+                    _moveX = dir;
+                    QueueJump();
+                    return;
+                }
+            }
         }
 
         // Every deliberate jump opens a short air-control window; outside it,
