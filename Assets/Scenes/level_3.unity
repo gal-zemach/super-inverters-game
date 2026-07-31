@@ -4703,7 +4703,7 @@ MonoBehaviour:
   BPM: 250
   countDown: 1
   countDownEveryRound: 0
-  muteMusicForTesting: 1
+  muteMusicForTesting: 0
 --- !u!4 &633616214
 Transform:
   m_ObjectHideFlags: 0
