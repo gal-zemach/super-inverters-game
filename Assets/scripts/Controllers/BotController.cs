@@ -89,6 +89,7 @@ namespace Controllers
         private float _nextThinkTime;
         private bool _hasLandedSinceSpawn;
         private Collider2D _rideCollider;   // mover we're riding (or hovering above mid-descent)
+        private float _airControlUntil;     // airborne steering allowed until this time (set by QueueJump)
         private Vector2 _desiredAim = Vector2.right;
         private int _patrolDir = 1;      // oscillation direction while in range (keeps the bot moving)
         private float _patrolFlipTime;   // next time to flip _patrolDir
@@ -168,11 +169,14 @@ namespace Controllers
             // down first, fight after touching ground once.
             if (!_hasLandedSinceSpawn)
             {
-                // isGrounded is serialized TRUE on the prefab, so the flag alone
-                // reads "landed" on frame 0 while the bot is mid-air — verify
-                // with a real ground probe before releasing the controls.
-                bool trulyGrounded = _self != null && _self.isGrounded
-                    && Physics2D.Raycast(transform.position, Vector2.down, 1.5f, _standableMask).collider != null;
+                // isGrounded is serialized TRUE on the prefab, so on the very
+                // first frames it reads "landed" while the bot is still mid-air.
+                // Physics overwrites it within a step or two — so simply ignore
+                // it for the first quarter second, then trust it. (A raycast
+                // wake-check proved fragile: pivot height and mover phase made
+                // it miss and the bot never woke at all.)
+                bool trulyGrounded = Time.timeSinceLevelLoad > 0.25f
+                    && _self != null && _self.isGrounded;
                 if (trulyGrounded) _hasLandedSinceSpawn = true;
                 else
                 {
@@ -309,7 +313,13 @@ namespace Controllers
         private int ApplyEdgeGuard(Vector2 pos, int moveDir)
         {
             if (moveDir == 0) return 0;
-            if (!_self.isGrounded) return moveDir; // air control continues an in-progress leap
+            // Air control belongs to deliberate leaps ONLY. Unconditional airborne
+            // chase-steering is what carried the bot off ledges in every traced
+            // death (spawn drops, mover hand-offs): 17 u/s of drift toward the
+            // opponent while falling. Outside a leap window, fall straight and
+            // let DecideVertical's landing rescue do any steering.
+            if (!_self.isGrounded)
+                return Time.time <= _airControlUntil ? moveDir : 0;
 
             Vector2 probe = pos + new Vector2(moveDir * edgeLookAhead, 0.2f);
             if (HasGround(probe, _standableMask)) return moveDir;            // safe to step
@@ -543,7 +553,13 @@ namespace Controllers
             return left ? Vector2.left : Vector2.right;
         }
 
-        private void QueueJump() => _jumpQueued = true;
+        // Every deliberate jump opens a short air-control window; outside it,
+        // airborne chase-steering is forbidden (see ApplyEdgeGuard).
+        private void QueueJump()
+        {
+            _jumpQueued = true;
+            _airControlUntil = Time.time + 1.2f;
+        }
 
         private bool IsFrozen()
         {
