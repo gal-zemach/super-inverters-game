@@ -173,8 +173,8 @@ level_1" was stale.
   AudioSource with **serialized Pitch=0** — a pitch-0 voice never advances/ends, each
   platform invert parked a stuck DC voice on the mixer. Pitch 1 fixed it; the invert SFX
   is audible for the first time (vol 0.4). Likely related to the old "20 playing sources"
-  reading. `muteMusicForTesting` now also mutes end-menu music and is ON in level_1..5 —
-  **REVERT before ship.**
+  reading. `muteMusicForTesting` now also mutes end-menu music; it was ON in level_1..5
+  during testing and was REVERTED (all levels unmuted) before the S1/S2 PR.
 - Bot difficulty: player-facing "BOT DIFFICULTY ◀ n/10 ▶" stepper on level_menu
   (BotDifficultyUI builds it at runtime; BotDifficulty = PlayerPrefs, default 4);
   editor-only OnGUI debug window + [/] keys REMOVED.
