@@ -36,9 +36,11 @@ namespace Game
 			button.interactable = true;
 			button.transition = Selectable.Transition.ColorTint;
 
+			// Grey is the resting look for every button; the selected/hovered one
+			// brightens toward white so keyboard/gamepad focus stays visible.
 			var colors = button.colors;
-			colors.normalColor = Color.white;
-			colors.highlightedColor = new Color(0.68f, 0.68f, 0.68f, 1f);
+			colors.normalColor = new Color(0.68f, 0.68f, 0.68f, 1f);
+			colors.highlightedColor = new Color(0.88f, 0.88f, 0.88f, 1f);
 			colors.pressedColor = new Color(0.45f, 0.45f, 0.45f, 1f);
 			colors.selectedColor = colors.highlightedColor;
 			colors.disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.5f);
