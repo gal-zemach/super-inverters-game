@@ -38,6 +38,11 @@ namespace Game.Powerups
         [Tooltip("Skip a spawn tick if this many pickups are already live.")]
         [SerializeField] private int maxConcurrentPickups = 2;
 
+        [Tooltip("Derive the horizontal spawn range from the scene's platform bounds at " +
+                 "startup instead of the serialized spawnXMin/Max. Lets one spawner setup " +
+                 "serve every single-player level without per-level tuning.")]
+        [SerializeField] private bool autoFitArenaWidth = false;
+
         private readonly Dictionary<int, GrenadePickup> _activePickups = new Dictionary<int, GrenadePickup>();
         private float _spawnTimer;
         private int _nextPickupId;
@@ -45,7 +50,28 @@ namespace Game.Powerups
         private static double NetworkNow =>
             PhotonNetwork.InRoom ? PhotonNetwork.Time : Time.timeAsDouble;
 
-        private void Awake() => ResetTimer();
+        private void Awake()
+        {
+            ResetTimer();
+            if (autoFitArenaWidth) FitArenaWidthToPlatforms();
+        }
+
+        // Pickups should fall where platforms are: span the platforms' x extent
+        // (slightly inset so edge spawns are still catchable).
+        private void FitArenaWidthToPlatforms()
+        {
+            var platforms = GameObject.FindGameObjectsWithTag(Values.PLATFORM_TAG);
+            if (platforms.Length == 0) return;
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (var p in platforms)
+            {
+                float x = p.transform.position.x;
+                if (x < min) min = x;
+                if (x > max) max = x;
+            }
+            spawnXMin = min + 1.5f;
+            spawnXMax = max - 1.5f;
+        }
 
         private void Update()
         {
@@ -97,8 +123,11 @@ namespace Game.Powerups
             _activePickups.Clear();
         }
 
+        // The epoch is a multiplayer sync concept (master broadcasts it at GO);
+        // offline it stays -1 forever, so single-player only gates on countdown.
         private bool CanSpawn() =>
-            !GameManager.CountdownActive && GameManager.PlatformMotionEpoch >= 0;
+            !GameManager.CountdownActive
+            && (!PhotonNetwork.InRoom || GameManager.PlatformMotionEpoch >= 0);
 
         private void PruneDead()
         {

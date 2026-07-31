@@ -964,6 +964,13 @@ namespace Game {
 			yield return new WaitForSecondsRealtime(secondsToNewRound);
 			SetLocalPlayerGameplayEnabled(false);
 			_endGameMenu.SetActive(true);
+			if (muteMusicForTesting)
+			{
+				// Same dev switch that silences the level music: the end menu has its
+				// own play-on-awake music, keep test runs quiet too.
+				var endAudioGo = _endGameMenu.transform.Find("EndGameAudio");
+				if (endAudioGo != null) endAudioGo.gameObject.SetActive(false);
+			}
 			EndMenuManager menuManager = _endGameMenu.GetComponent<EndMenuManager>();
 			menuManager.setAnimation(winPlayerId);
 			Destroy(_audioSource); // This is here so the audio will stop only after the menu appeared (because the menu has its own audio)

@@ -238,6 +238,11 @@ namespace Game
 				var manager = go.GetComponent<PlayerManager>();
 				if (manager == null) continue;
 
+				// Offline every PhotonView reports IsMine, so without this the HUD
+				// can bind to the bot instead of the human.
+				var bot = go.GetComponent<Controllers.BotController>();
+				if (bot != null && bot.isActiveAndEnabled) continue;
+
 				var pv = go.GetComponent<PhotonView>();
 				if (pv == null)
 				{

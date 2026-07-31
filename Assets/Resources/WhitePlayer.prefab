@@ -442,6 +442,7 @@ GameObject:
   - component: {fileID: 4074660733948596348}
   - component: {fileID: 1840366966653835787}
   - component: {fileID: 4595178468605956876}
+  - component: {fileID: 5799037429062321901}
   m_Layer: 18
   m_Name: WhitePlayer
   m_TagString: player
@@ -788,6 +789,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.Powerups.GrenadeInventory
   grenadesPerPickup: 2
+  maxGrenades: 3
+  startingGrenades: 3
 --- !u!114 &1840366966653835787
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -825,6 +828,32 @@ MonoBehaviour:
   beamLenMax: 12
   beamWidthNear: 0.2
   beamWidthFar: 1
+--- !u!114 &5799037429062321901
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1270938468579276}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 23c8a6b4323044b488612dd0d6d57f15, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Controllers.BotController
+  sceneName: 
+  StartScene: start_scene_2
+  inStartScene: 0
+  movingDirection: {x: 0, y: 0}
+  aimDirection: {x: 0, y: 0}
+  difficultyTier: 4
+  thinkInterval: 0.1
+  engageRange: 80
+  preferredRange: 10
+  rangeDeadband: 3
+  edgeLookAhead: 2
+  jumpReach: 12
+  groundProbeDistance: 4
+  feetAimOffset: 1
 --- !u!1 &1415484695579008
 GameObject:
   m_ObjectHideFlags: 0

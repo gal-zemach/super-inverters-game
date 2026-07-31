@@ -25,7 +25,12 @@ namespace Controllers
         }
 
         public override bool jump() => false;
-        public override bool shoot() => Input.GetMouseButton(0);
+        // Gate on `enabled`: PlayerManager.FixedUpdate polls shoot() on ALL
+        // controllers without an enabled check, and this getter reads live input,
+        // so a DISABLED MouseAimController would otherwise still fire its player
+        // on LMB — e.g. the human's click firing the AI-owned player in single
+        // player (its MouseAimController is disabled but still present).
+        public override bool shoot() => enabled && Input.GetMouseButton(0);
         public override bool getDown() => false;
         public override bool pauseMenu() => false;
     }

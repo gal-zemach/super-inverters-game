@@ -36,10 +36,12 @@ namespace Game
 			button.interactable = true;
 			button.transition = Selectable.Transition.ColorTint;
 
+			// Grey is the resting look for every button; the selected/hovered one
+			// goes a darker tone so keyboard/gamepad focus stays visible.
 			var colors = button.colors;
-			colors.normalColor = Color.white;
-			colors.highlightedColor = new Color(0.68f, 0.68f, 0.68f, 1f);
-			colors.pressedColor = new Color(0.45f, 0.45f, 0.45f, 1f);
+			colors.normalColor = new Color(0.68f, 0.68f, 0.68f, 1f);
+			colors.highlightedColor = new Color(0.5f, 0.5f, 0.5f, 1f);
+			colors.pressedColor = new Color(0.35f, 0.35f, 0.35f, 1f);
 			colors.selectedColor = colors.highlightedColor;
 			colors.disabledColor = new Color(0.78f, 0.78f, 0.78f, 0.5f);
 			colors.colorMultiplier = 1f;
@@ -49,9 +51,12 @@ namespace Game
 			if (image != null)
 				image.color = Color.white;
 
+			// Dark label: the button image is white in its normal state (the tint
+			// only greys it when selected/pressed), so a near-white label is
+			// invisible until the button is selected.
 			var label = button.GetComponentInChildren<Text>();
 			if (label != null)
-				label.color = new Color(0.96f, 0.96f, 0.96f, 1f);
+				label.color = new Color(0.15f, 0.15f, 0.15f, 1f);
 
 			button.onClick.RemoveAllListeners();
 			button.onClick.AddListener(() => sceneLoader.LoadSceneByName(sceneName));

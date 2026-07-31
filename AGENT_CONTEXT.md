@@ -149,6 +149,74 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-08-01 — S1 + S2 COMPLETE: single-player fully playable on all 5 levels, bot fights everywhere (incl. grenades)
+
+> **EOD STATUS:** branch `feature/single-player`, all pushed (`fb91f542` + docs). PR #5
+> (paint-grenade) was merged into `Multiplayer` with a merge commit at the start of this
+> session and the branch synced on top. User verified ALL 5 levels end-to-end.
+> **NEXT: PR `feature/single-player` → `Multiplayer`, merge, then S3 on a new branch
+> `feature/mp-level-select` off updated Multiplayer** (level select in MP + all levels
+> MP-enabled + G4 folded in — see NEXT_PHASE_SPEC §2 S3).
+
+**Load-bearing discovery that shrank both slices:** ALL five SP level scenes instance the
+same `Assets/Resources/{Black,White}Player.prefab` — so the bot, grenade components, and
+tuning live on the prefab and exist everywhere at once. The 07-12 note "bot only on
+level_1" was stale.
+
+**Shipped this session (each with its own commit):**
+- Life-icon HUD fix: last life froze un-animated at game over (`timeScale=0` + scaled-time
+  animator) → unscaled, like the end-menu word art. The "game over one life early" bug was
+  purely this display artifact; score truth was never wrong.
+- Main menu: SP button label was white-on-white (visible only while selected) → dark
+  labels; grey resting buttons, darker grey on selection (user preference).
+- Sound: "bass boosted" end music root-caused to `PlatformSFX.prefab` ChangeColor
+  AudioSource with **serialized Pitch=0** — a pitch-0 voice never advances/ends, each
+  platform invert parked a stuck DC voice on the mixer. Pitch 1 fixed it; the invert SFX
+  is audible for the first time (vol 0.4). Likely related to the old "20 playing sources"
+  reading. `muteMusicForTesting` now also mutes end-menu music; it was ON in level_1..5
+  during testing and was REVERTED (all levels unmuted) before the S1/S2 PR.
+- Bot difficulty: player-facing "BOT DIFFICULTY ◀ n/10 ▶" stepper on level_menu
+  (BotDifficultyUI builds it at runtime; BotDifficulty = PlayerPrefs, default 4);
+  editor-only OnGUI debug window + [/] keys REMOVED.
+- S2: PowerupSpawner in all 5 SP scenes (autoFitArenaWidth derives spawn range from
+  platform bounds), CanSpawn no longer requires the MP-only PlatformMotionEpoch offline;
+  ShootCooldownHud added to SP scenes' Game object; HUD binds to the human (offline every
+  PhotonView is IsMine — must skip bot-driven players).
+- SpawnPlatformPainter (SP only): first two platforms under each spawn painted the
+  player's colour one frame after load.
+- Editor tool `SpawnPreviewGizmos`: spawn marker + projected fall line per player.
+  **CRITICAL: movers TELEPORT to points[0] at round start** (edit-time positions lie);
+  the gizmo projects against round-start footprints and draws them. Also:
+  `isMovingPlatform` is runtime-computed (always false in edit mode) — detect movers by
+  `points.arraySize > 1`; `PlayerManager.isGrounded` is serialized TRUE on the prefabs.
+- **Bot navigation discipline** (each rule earned by a traced death; frame-tracing via an
+  `EditorApplication.update` sampler → Logs/bot_trace*.txt was the ONLY way — theory
+  patches failed 4x): (1) no steering until first real landing after spawn; (2) airborne
+  chase-steering forbidden outside a 1.2s window opened by a deliberate jump; (3) leap and
+  side-climb targets must be STATIC standable ground; (4) walking steps require static
+  ground ahead (movers are boarded only by landing on them); (5) riding a mover = hold its
+  centre, stay locked through contact flickers geometrically (descending shuttles outrun
+  gravity for seconds — timers can't cover it); (6) falling rescue steers to the NEAREST
+  footing, never toward the opponent; (7) marooned watchdog: keyed on net displacement,
+  after 1s escapes preferring DROP-THROUGH (getDown; level_2's spawn islands sit directly
+  above their big platform — the designed way off), else a jump-dive at static ground
+  below. Result: bot survives, hunts, and can WIN on every level incl. level_3 (100%
+  movers) and level_2 (spawn islands).
+- **Bot grenades:** 45° lob (v = R·√(g/(R−dy)), tier aim wobble, clamped 8–36) at a
+  grounded opponent 8–55 away, cooldown 6–12s (initial 2–5s — rounds reload the scene and
+  a full cooldown outlived the round). Bot also contests pickups again.
+- Safe spawns: level_2 static spawns; level_3 spawns above the vertical shuttles'
+  round-start tops.
+
+**Testing lesson (cost a round):** an idle-opponent survival metric cannot distinguish a
+comatose bot from a careful one — the wake-probe regression "passed" 5 levels while the
+bot stood paralysed; the user's playtest caught it. Activity (kills, displacement,
+awake/firing flags via reflection) is the metric.
+
+**Open (parked):** bot mid-air detonate (meanness upgrade), gamepad nav on menus untested,
+SP pause-freezes-grenades not explicitly re-tested, "no PUN warnings offline" console
+sweep, plus the standing parking lot (sound dropout revert pointer, G4, ClearAllPickups).
+
 ### 2026-07-11 (handoff) — USER ROADMAP for the next sessions — READ THIS FIRST
 
 **Full technical plan + test checklist: `NEXT_PHASE_SPEC.md` (repo root)** — the
@@ -184,6 +252,29 @@ timers — the two unchecked §9 items depend on it; fits naturally under step 3
 fully multiplayer" hardening), the **runtime sound dropout** (cornered to the PlayShoot call
 site — see the entry below; probes were STRIPPED in `7791fc48`, `git revert 7791fc48`
 restores the whole diagnostic kit), and **`ClearAllPickups` end-game wiring**.
+
+### 2026-07-12 — Slice S1: SP diagnosed + AI bot for White (in progress)
+> **EOD STATUS:** committed to branch **`feature/single-player`** (branched off `feature/paint-grenade` = the post-PR#5 Multiplayer tree). **NOT pushed** — user runs `git push -u origin feature/single-player`. The bot files listed below are IN that commit; working tree clean. Reconcile with `Multiplayer` after PR #5 lands: if PR #5 is merge/rebase-merged the diff is clean; if squash-merged, `git rebase --onto Multiplayer feature/paint-grenade feature/single-player` to drop the duplicated grenade commits. NEXT SESSION: finish S1 (bot nav refine — real reachable-platform graph + scale bot to the other levels), then S2 (grenades in SP). **Revert `muteMusicForTesting` on level_1 before ship.**
+
+> **⚠️ KNOWN BUG (found 2026-07-12 EOD by user playtest — NOT investigated, document-only):** In single-player `level_1` (vs the bot), the **game-over / end screen fired while the human (Black) still had a life left** — the match ended ~one life too early. The bot itself was behaving well (difficulty + shooting good); this looks like a latent SP game-over/lives-count bug now *exposed* because the bot finally racks up real kills (SP was previously too passive to reach a clean game-over). **Where to look (all unverified leads):** (1) `GameManager.DoPlayerKilled` — SP path does `decreaseScore` then `GameState.hasNoLives` (`score <= 0`, not `== 0`) → `endGame`; a double- or skip-decrement ends it early. (2) Double-decrement: `PlayerManager.OnTriggerExit2D`(boundary)→`PlayerKilled`→`DoPlayerKilled` is `roundEnded`-gated within a round, but check a death landing in the spawn/countdown window or across the reload boundary (fires twice?). (3) HUD vs. truth: compare `LivesVisualizer` display against the `ScoreKeeper` score and `GameState.startLives` (level_1's serialized value) — an off-by-one in the display vs. the `<=0` end test would look exactly like "I still had a life." (4) `ScoreKeeper` is `DontDestroyOnLoad` and persists across SP round reloads (`endGame` destroys it) — confirm no stale carry-over. **Repro:** SP level_1, let the bot kill Black repeatedly, watch the lives HUD vs. when the end screen appears. **Priority: fix early next S1 session — core-loop correctness, before more bot polish.**
+
+**Agent session goal:** Start S1 (single-player). Diagnose why SP "doesn't work", then act.
+
+**Diagnosis (via Unity MCP live inspection of `level_1`, not just code reading):** SP is NOT hard-broken. `level_1` loads and runs — the scene-placed `BlackPlayer`/`WhitePlayer` prefab instances spawn, are tagged/layered right, controllable, and the kill/countdown/end-game paths are intact (all Photon calls are `InRoom`-gated, skipped offline). Only non-fatal console errors (`InGamePauseMenu` builtin-sprite `UI/Skin/UISprite.psd` — S4). **What the user means by "SP doesn't work":** it's *incomplete*, not crashing — (a) it's a 2-player game so P2 should be an **AI bot**; (b) SP lacks feature parity (grenade, defined spawn positions, untested pause/game-over freeze); (c) flow: SP routes through `level_menu` (MP hardwires `level_1`). Plan: **do everything on `level_1` first** (user manually picks it), then scale to other levels; skipping level-select is future.
+
+**User decisions this session:** White = **AI bot, build now**; **keep mouse-aim for Black** (intentional, not a bug); difficulty = **6 discrete tiers** with an editor-only debug toggle. Base `feature/single-player` off **Multiplayer only after PR #5 merges** (still OPEN); work meanwhile in the main checkout. Consulted the **Fable advisor** for the bot design (architecture + v1 spec + 8 code pitfalls) — its guidance is folded into `BotController` comments.
+
+**What I did (ALL UNCOMMITTED, main checkout on `feature/paint-grenade` working tree — NOT on a branch yet):**
+- **NEW `Assets/scripts/Controllers/BotController.cs`** — `BotController : Controller`, added to `Assets/Resources/WhitePlayer.prefab`. Self-activates in `Awake`: if `PhotonNetwork.InRoom` → disables itself (MP: White stays a remote human, untouched); else (SP) disables White's `KeyboardController`/`PS4Controller`/`GrenadeAimController` and owns the side. **Zero `PlayerManager` changes** (same seam as `NetworkController`). Priority-layered reactive AI (Survive>Fight>Move); **"aim at the opponent's feet"** = paint their platform = the kill (shots don't kill, only falls do); self-sustaining burst-fire cadence; **gap-crossing jump pursuit** (`jumpReach`); **always-moving patrol** (never parks — oscillates when in range) + **height-seeking climb** (jumps to reachable platforms above to gain a downward shot on the opponent's platform); **10 difficulty tiers** (`difficultyTier` 1–10, presets for reaction/aimError/burst/aggression) + **editor-only OnGUI debug window** (`[`/`]` keys + on-screen easy/hard buttons), all `#if UNITY_EDITOR`. Iterated per user playtest: fixed human's LMB firing the bot, added independent-fire + pursuit + patrol + climb + more tiers.
+- **`Assets/scripts/Controllers/MouseAimController.cs`** — `shoot()` now `enabled && Input.GetMouseButton(0)`. BUG it fixes: `PlayerManager.FixedUpdate` polls `shoot()` on ALL controllers **without an enabled check**, and this getter read live LMB, so the human's click fired the bot (White's disabled MouseAimController). (Masked in MP by the `IsMine` gate; only bit in SP.)
+- **`ProjectSettings/InputManager.asset`** — `B1_Jump` (Black's SP jump) remapped from `left ctrl`→`space` (alt `h` kept); user expected Space.
+- **`Assets/Scenes/level_1.unity`** — set `GameManager.muteMusicForTesting = true` (dev only — **REVERT before ship**).
+
+**Verified via MCP:** all compiles clean; bot activates in SP (disables White human controls), aims at opponent, **fires independently** (saw 6 shots with `Input.GetMouseButton(0)=False`). Gap-jump pursuit + tighter engage range + jump=Space are compiled but **awaiting the user's next playtest**. Editor was flaky about active-scene flips mid-session (user also using it); `set_active_instance super-inverters-game@646d1cbe` then drive via `execute_code` (open scene + inspect atomically to dodge races). `read_console`/`find_gameobjects by_component` are unreliable here — reflection via `execute_code` is the trustworthy probe. **GOTCHA (cost a round):** changing a serialized field's *code default* does NOT update values already serialized on `WhitePlayer.prefab`'s `BotController` — the component kept `difficultyTier=3, preferredRange=18` from first-add, so tuning looked like "no effect." Rewrite prefab values via `PrefabUtility.LoadPrefabContents` + `SerializedObject`. Current aggressive base written to prefab: `difficultyTier=7, preferredRange=10, rangeDeadband=3, engageRange=45, jumpReach=12`. **Bot lives ONLY on `level_1`'s White** — other SP levels have no bot yet, so testing another level shows nothing. User still wants it MORE active: constantly moving, climbing to the top platforms, shooting the platform under the player far more — patrol/climb logic exists but is geometry-limited on `level_1` (isolated platforms beyond `jumpReach`); needs real nav work + on-level playtesting next. **Diagnosed the "active round 1 then parks" report:** NOT a per-round bug — round 2 re-inits fine (valid opponent, botEnabled), but greedy movement gets edge-guard-vetoed toward the opponent and it FROZE (out of engage range too). **Fix applied (compiled, awaiting playtest):** `SafePatrolDir` never-freeze fallback (oscillate the current platform when advance is blocked) + explore-climb (jump to ANY reachable platform above, no longer gated on opponent-being-above). Still greedy (no real pathfinding); if it still parks or pit-suicides, that's the next nav step. **Next round:** user reported it stopped firing independently (only when shot at) + still won't seek higher platforms. Fixes: prefab `engageRange` 45→80 (was only reactive because the human usually sat >45u away) and climb rewritten to `HigherPlatformSide` (detects higher platforms straight-up OR diagonally and steers onto them, vs. old straight-up-only `HasCeilingWithin`, now unused/harmless). Compiled+verified; awaiting playtest. If seeking-higher still fails, it needs the reachable-platform-graph nav pass — greedy raycast climbing can't plan multi-jump routes.
+
+**Blocked / unclear:** PR #5 (`feature/paint-grenade`→`Multiplayer`) **still OPEN**. Work is uncommitted on the main checkout (Unity/MCP only operate there); the spawned worktree `infallible-margulis-b49ff2` is unused.
+
+**Next agent should:** (1) after PR #5 merges → create `feature/single-player` off `Multiplayer`, move the uncommitted files onto it, commit (USER pushes); (2) iterate bot feel from user playtest (pursuit/gap-jumps not over-leaping into pits; tier balance); (3) S2 on `level_1` — grenades in SP + spawn positions + pause/game-over freeze tests; (4) **revert `muteMusicForTesting`** before ship.
 
 ### 2026-07-11 (later) — Grenade feature WRAPPED; game-over-exit freeze fixed (native-deadlock workaround); §9 complete except G4 items; sound bug cornered
 

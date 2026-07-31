@@ -46,7 +46,12 @@ namespace Game
 		{
 			if (currentLives > 0)
 			{
-				allLives[currentLives - 1].GetComponent<Animator>().SetTrigger("removeLife");
+				// The final kill's endGame() freezes Time.timeScale in the same frame
+				// this trigger fires; on scaled time the last icon's removal animation
+				// never plays, so the HUD shows a life the player no longer has.
+				Animator animator = allLives[currentLives - 1].GetComponent<Animator>();
+				animator.updateMode = AnimatorUpdateMode.UnscaledTime;
+				animator.SetTrigger("removeLife");
 //				Invoke("deactivateObject", 2);
 			}
 			currentLives--;
