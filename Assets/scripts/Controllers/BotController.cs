@@ -88,6 +88,7 @@ namespace Controllers
 
         private float _nextThinkTime;
         private bool _hasLandedSinceSpawn;
+        private Collider2D _rideCollider;   // mover we're riding (or hovering above mid-descent)
         private Vector2 _desiredAim = Vector2.right;
         private int _patrolDir = 1;      // oscillation direction while in range (keeps the bot moving)
         private float _patrolFlipTime;   // next time to flip _patrolDir
@@ -167,7 +168,12 @@ namespace Controllers
             // down first, fight after touching ground once.
             if (!_hasLandedSinceSpawn)
             {
-                if (_self != null && _self.isGrounded) _hasLandedSinceSpawn = true;
+                // isGrounded is serialized TRUE on the prefab, so the flag alone
+                // reads "landed" on frame 0 while the bot is mid-air — verify
+                // with a real ground probe before releasing the controls.
+                bool trulyGrounded = _self != null && _self.isGrounded
+                    && Physics2D.Raycast(transform.position, Vector2.down, 1.5f, _standableMask).collider != null;
+                if (trulyGrounded) _hasLandedSinceSpawn = true;
                 else
                 {
                     _moveX = 0f;
@@ -220,6 +226,40 @@ namespace Controllers
             // Fight: shoot whenever the opponent is within engage range.
             float absDx = Mathf.Abs(dx);
             if (absDx <= engageRange) _fireIntent = true;
+
+            // Riding a MOVING platform: the ground itself is sliding — the patrol
+            // and climb heuristics all assume static footing and walk the bot off
+            // the edge (level_3 is 100% movers). Hold near the platform's centre
+            // and fight from there; the ride does the repositioning.
+            if (TryGetMovingGround(pos, out Bounds ride, out Collider2D rideCol))
+            {
+                _rideCollider = rideCol;
+                float toCenter = ride.center.x - pos.x;
+                _moveX = Mathf.Abs(toCenter) > 1f ? Mathf.Sign(toCenter) : 0f;
+                _jumpQueued = false;
+                return;
+            }
+
+            // A descending mover outruns gravity, leaving its rider airborne
+            // above it for seconds at a time (level_3's vertical shuttles). As
+            // long as the remembered ride is still plausibly beneath us, steer
+            // back over its centre and wait to land — chase logic's air control
+            // is what used to drift the bot off into the void. The check is
+            // geometric, not a timer: any timeout expires mid-descent.
+            if (_rideCollider != null)
+            {
+                Bounds rb = _rideCollider.bounds;
+                bool stillOverRide = pos.y > rb.max.y - 0.5f
+                    && Mathf.Abs(pos.x - rb.center.x) < rb.extents.x + 3f;
+                if (stillOverRide)
+                {
+                    float toRide = rb.center.x - pos.x;
+                    _moveX = Mathf.Abs(toRide) > 0.5f ? Mathf.Sign(toRide) : 0f;
+                    _jumpQueued = false;
+                    return;
+                }
+                _rideCollider = null;
+            }
 
             // Move + Survive. Never freeze: if advancing toward the opponent is
             // blocked by a gap/edge, patrol the current platform so the bot keeps
@@ -309,6 +349,23 @@ namespace Controllers
         {
             var pm = hit.collider.GetComponentInParent<PlatformManager>();
             return pm == null || !pm.isMovingPlatform;
+        }
+
+        // True when the bot is standing on a MOVING platform; outputs its bounds
+        // and collider so the rider can hold position near its centre (and keep
+        // tracking it through ground-contact flickers).
+        private bool TryGetMovingGround(Vector2 pos, out Bounds bounds, out Collider2D collider)
+        {
+            bounds = default(Bounds);
+            collider = null;
+            if (_self == null || !_self.isGrounded) return false;
+            var hit = Physics2D.Raycast(pos, Vector2.down, groundProbeDistance, _standableMask);
+            if (hit.collider == null) return false;
+            var pm = hit.collider.GetComponentInParent<PlatformManager>();
+            if (pm == null || !pm.isMovingPlatform) return false;
+            bounds = hit.collider.bounds;
+            collider = hit.collider;
+            return true;
         }
 
         // Falling: steer toward standable ground below; if only opponent-colour
