@@ -171,10 +171,14 @@ Recon — delta between level_1-multiplayer and level_1 (per-scene retrofit chec
 - GameManager.gameSceneName empty in SP scenes → ReloadMatchScene falls back to active
   scene = generalizes to any level.
 
-Plan (phases): **A.** Level select in MP — reuse level_menu: on room full, master
-LoadLevel("level_menu") (AutomaticallySyncScene carries guest), guest gets a "host is
-choosing" state with input disabled, SceneLoader gets an InRoom branch (LoadLevel), hide
-BotDifficultyUI in-room. **B.** Retrofit editor pass over level_1..5 (PhotonView,
+Plan (phases): **A.** (USER-DECIDED FLOW) Host picks the level BEFORE hosting:
+main_menu "1 VS 1" → level_menu in MP-pick mode (static flag; hide BotDifficultyUI) →
+picking a level stores it (static MultiplayerLevelSelection.ChosenLevel) and loads the
+Multiplayer LOBBY scene (copy-room-ID button first, as today) → guest joins → countdown →
+`TryLoadGameScene` loads the CHOSEN level (replaces hardwired level_1-multiplayer;
+guest follows via AutomaticallySyncScene). Wire-up points: MainMenuUI (set flag),
+SceneLoader.LoadSceneByName (intercept level pick in MP mode), MultiplayerBootstrap
+(use ChosenLevel). Clear the flag when returning to main_menu. **B.** Retrofit editor pass over level_1..5 (PhotonView,
 MultiplayerSpawner + spawn arrays, remove scene players when InRoom). **C.** G4
 master-authoritative pickups + ClearAllPickups wiring (kickoff plan in the session-4
 entry). **D.** Two-editor verification per level (paint-walk test is the desync detector;
