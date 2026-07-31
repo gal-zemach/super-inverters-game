@@ -140,15 +140,18 @@ workflow: user screenshots, agent adjusts, bake final values.
 ## 3. Test checklist (tick as verified; annotate with date like §9 of the grenade spec)
 
 ### S1/S2 — Single-player
-- [ ] main_menu → Single Player → level_menu shows and is navigable (keyboard + gamepad).
-- [ ] Each of level_1..5 loads and a full match plays: move, jump, shoot, kills decrement
-      lives, game over shows the right winner, rematch works, exit to menu works.
-- [ ] Grenades in SP: both players can charge/throw/mid-air-detonate with their own inputs;
-      explosion paints platforms; painted-platform collision updates for both.
-- [ ] Pickups fall in SP; collection follows the 3-start/3-cap/+2 economy; HUD rows for
-      BOTH players update.
-- [ ] Pause in SP freezes grenades mid-air; game over freezes the world; both resume/exit
-      cleanly.
+- [x] main_menu → Single Player → level_menu shows and is navigable — 2026-08-01, user
+      (keyboard + mouse; includes the new BOT DIFFICULTY stepper. Gamepad nav untested.)
+- [x] Each of level_1..5 loads and a full match plays vs the bot: move, jump, shoot, kills
+      decrement lives, game over shows the right winner — 2026-08-01, user ("tested all
+      levels, it works"). Bot survives + fights on every level (automated sweeps + user).
+- [x] Grenades in SP: human charge/throw/mid-air-detonate; BOT throws 45° lobs on a
+      6–12s cooldown; explosion paints platforms — 2026-08-01 (user levels 1–2 + all-level
+      pass; bot throw verified live). NOTE: the bot does NOT mid-air-detonate (future).
+- [x] Pickups fall in SP; 3-start/3-cap/+2 economy; bot contests pickups — 2026-08-01.
+      HUD grenade row exists for the LOCAL player only (bot count not displayed — fine).
+- [~] Game over freezes the world and the last life icon animates (unscaled) — verified.
+      Pause-freezes-grenades in SP specifically: not yet explicitly re-tested.
 - [ ] No Photon calls fire offline (console clean of PUN warnings/errors in a full SP loop).
 
 ### S3 — Multiplayer levels

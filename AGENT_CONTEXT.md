@@ -149,6 +149,74 @@ When you (a future agent) work on this repo:
 
 <!-- Newest entries on top. Append ABOVE the consolidated 2026-05-22 entry. -->
 
+### 2026-08-01 — S1 + S2 COMPLETE: single-player fully playable on all 5 levels, bot fights everywhere (incl. grenades)
+
+> **EOD STATUS:** branch `feature/single-player`, all pushed (`fb91f542` + docs). PR #5
+> (paint-grenade) was merged into `Multiplayer` with a merge commit at the start of this
+> session and the branch synced on top. User verified ALL 5 levels end-to-end.
+> **NEXT: PR `feature/single-player` → `Multiplayer`, merge, then S3 on a new branch
+> `feature/mp-level-select` off updated Multiplayer** (level select in MP + all levels
+> MP-enabled + G4 folded in — see NEXT_PHASE_SPEC §2 S3).
+
+**Load-bearing discovery that shrank both slices:** ALL five SP level scenes instance the
+same `Assets/Resources/{Black,White}Player.prefab` — so the bot, grenade components, and
+tuning live on the prefab and exist everywhere at once. The 07-12 note "bot only on
+level_1" was stale.
+
+**Shipped this session (each with its own commit):**
+- Life-icon HUD fix: last life froze un-animated at game over (`timeScale=0` + scaled-time
+  animator) → unscaled, like the end-menu word art. The "game over one life early" bug was
+  purely this display artifact; score truth was never wrong.
+- Main menu: SP button label was white-on-white (visible only while selected) → dark
+  labels; grey resting buttons, darker grey on selection (user preference).
+- Sound: "bass boosted" end music root-caused to `PlatformSFX.prefab` ChangeColor
+  AudioSource with **serialized Pitch=0** — a pitch-0 voice never advances/ends, each
+  platform invert parked a stuck DC voice on the mixer. Pitch 1 fixed it; the invert SFX
+  is audible for the first time (vol 0.4). Likely related to the old "20 playing sources"
+  reading. `muteMusicForTesting` now also mutes end-menu music and is ON in level_1..5 —
+  **REVERT before ship.**
+- Bot difficulty: player-facing "BOT DIFFICULTY ◀ n/10 ▶" stepper on level_menu
+  (BotDifficultyUI builds it at runtime; BotDifficulty = PlayerPrefs, default 4);
+  editor-only OnGUI debug window + [/] keys REMOVED.
+- S2: PowerupSpawner in all 5 SP scenes (autoFitArenaWidth derives spawn range from
+  platform bounds), CanSpawn no longer requires the MP-only PlatformMotionEpoch offline;
+  ShootCooldownHud added to SP scenes' Game object; HUD binds to the human (offline every
+  PhotonView is IsMine — must skip bot-driven players).
+- SpawnPlatformPainter (SP only): first two platforms under each spawn painted the
+  player's colour one frame after load.
+- Editor tool `SpawnPreviewGizmos`: spawn marker + projected fall line per player.
+  **CRITICAL: movers TELEPORT to points[0] at round start** (edit-time positions lie);
+  the gizmo projects against round-start footprints and draws them. Also:
+  `isMovingPlatform` is runtime-computed (always false in edit mode) — detect movers by
+  `points.arraySize > 1`; `PlayerManager.isGrounded` is serialized TRUE on the prefabs.
+- **Bot navigation discipline** (each rule earned by a traced death; frame-tracing via an
+  `EditorApplication.update` sampler → Logs/bot_trace*.txt was the ONLY way — theory
+  patches failed 4x): (1) no steering until first real landing after spawn; (2) airborne
+  chase-steering forbidden outside a 1.2s window opened by a deliberate jump; (3) leap and
+  side-climb targets must be STATIC standable ground; (4) walking steps require static
+  ground ahead (movers are boarded only by landing on them); (5) riding a mover = hold its
+  centre, stay locked through contact flickers geometrically (descending shuttles outrun
+  gravity for seconds — timers can't cover it); (6) falling rescue steers to the NEAREST
+  footing, never toward the opponent; (7) marooned watchdog: keyed on net displacement,
+  after 1s escapes preferring DROP-THROUGH (getDown; level_2's spawn islands sit directly
+  above their big platform — the designed way off), else a jump-dive at static ground
+  below. Result: bot survives, hunts, and can WIN on every level incl. level_3 (100%
+  movers) and level_2 (spawn islands).
+- **Bot grenades:** 45° lob (v = R·√(g/(R−dy)), tier aim wobble, clamped 8–36) at a
+  grounded opponent 8–55 away, cooldown 6–12s (initial 2–5s — rounds reload the scene and
+  a full cooldown outlived the round). Bot also contests pickups again.
+- Safe spawns: level_2 static spawns; level_3 spawns above the vertical shuttles'
+  round-start tops.
+
+**Testing lesson (cost a round):** an idle-opponent survival metric cannot distinguish a
+comatose bot from a careful one — the wake-probe regression "passed" 5 levels while the
+bot stood paralysed; the user's playtest caught it. Activity (kills, displacement,
+awake/firing flags via reflection) is the metric.
+
+**Open (parked):** bot mid-air detonate (meanness upgrade), gamepad nav on menus untested,
+SP pause-freezes-grenades not explicitly re-tested, "no PUN warnings offline" console
+sweep, plus the standing parking lot (sound dropout revert pointer, G4, ClearAllPickups).
+
 ### 2026-07-11 (handoff) — USER ROADMAP for the next sessions — READ THIS FIRST
 
 **Full technical plan + test checklist: `NEXT_PHASE_SPEC.md` (repo root)** — the
