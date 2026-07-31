@@ -819,17 +819,22 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 914314850}
     m_Modifications:
+    - target: {fileID: -6152906292993125682, guid: 1c1fbaecebccc41218c7e2b2c97f2fa7,
+        type: 3}
+      propertyPath: sceneViewId
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 1c1fbaecebccc41218c7e2b2c97f2fa7, type: 3}
       propertyPath: m_RootOrder
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 1c1fbaecebccc41218c7e2b2c97f2fa7, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -20
+      value: -50.29
       objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 1c1fbaecebccc41218c7e2b2c97f2fa7, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 25
+      value: 34.95
       objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 1c1fbaecebccc41218c7e2b2c97f2fa7, type: 3}
       propertyPath: m_LocalPosition.z
@@ -2279,6 +2284,7 @@ GameObject:
   - component: {fileID: 1088979589}
   - component: {fileID: 1088979588}
   - component: {fileID: 1088979593}
+  - component: {fileID: 1088979594}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -2410,6 +2416,18 @@ MonoBehaviour:
   grenadeIconSpacing: 44
   grenadeRowOffset: {x: 0, y: -6}
   showBurstBar: 0
+--- !u!114 &1088979594
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1088979586}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c2003bbd8c5a443cd91ca8dabf59cabd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Game.SpawnPlatformPainter
 --- !u!1 &1128330409
 GameObject:
   m_ObjectHideFlags: 0
@@ -3614,11 +3632,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 66aec4417a3984f31a505a4cd9430c2c, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 40
+      value: 48.83
       objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 66aec4417a3984f31a505a4cd9430c2c, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 25
+      value: 34.67
       objectReference: {fileID: 0}
     - target: {fileID: 4475441237292758, guid: 66aec4417a3984f31a505a4cd9430c2c, type: 3}
       propertyPath: m_LocalPosition.z
@@ -3639,6 +3657,11 @@ PrefabInstance:
     - target: {fileID: 4475441237292758, guid: 66aec4417a3984f31a505a4cd9430c2c, type: 3}
       propertyPath: m_LocalRotation.z
       value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 737421970684537542, guid: 66aec4417a3984f31a505a4cd9430c2c,
+        type: 3}
+      propertyPath: sceneViewId
+      value: 2
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

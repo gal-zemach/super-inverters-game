@@ -6,14 +6,15 @@ using Game;
 // multiplayer spawn drag-handles): every scene-placed player shows its spawn
 // marker and a projected fall line to the surface it will actually land on.
 //
-//   GREEN  — lands on a static platform of the player's colour (safe)
+//   GREEN  — lands on a static platform (safe; SpawnPlatformPainter recolours
+//            the first two platforms in the column to the player's colour at
+//            round start, so ANY platform below counts)
 //   YELLOW — lands on a MOVING platform (its patrol path is drawn too;
 //            it may not be there when the player drops)
-//   RED    — nothing standable below: the player falls into the void
+//   RED    — nothing below: the player falls into the void
 //
 // Move the player in the Scene view until the line is green, then save the
-// scene. Opposite-colour platforms are ignored by the projection because the
-// player falls straight through them.
+// scene.
 public static class SpawnPreviewGizmos
 {
 	private const float FallProbeDistance = 200f;
@@ -33,10 +34,11 @@ public static class SpawnPreviewGizmos
 		Gizmos.color = isBlack ? Color.white : Color.black;
 		Gizmos.DrawWireSphere(spawn, 1.0f);
 
-		// Project the fall: first standable surface below (own colour, grey, or
-		// floor). Opposite-colour hits are skipped — the player passes through.
-		string ownLayer = isBlack ? Values.BLACK_PLATFORM_LAYER : Values.WHITE_PLATFORM_LAYER;
-		int mask = LayerMask.GetMask(ownLayer, Values.GREY_PLATFORM_LAYER, "floor");
+		// Project the fall: first platform below in ANY colour (the runtime
+		// SpawnPlatformPainter recolours the landing column to this player's
+		// colour at round start), or the floor.
+		int mask = LayerMask.GetMask(Values.BLACK_PLATFORM_LAYER, Values.WHITE_PLATFORM_LAYER,
+			Values.GREY_PLATFORM_LAYER, "floor");
 		RaycastHit2D landing = default;
 		foreach (var hit in Physics2D.RaycastAll(spawn, Vector2.down, FallProbeDistance, mask))
 		{
@@ -60,7 +62,8 @@ public static class SpawnPreviewGizmos
 		Gizmos.DrawLine(spawn, landing.point);
 		Gizmos.DrawWireCube(landing.point, new Vector3(2.5f, 0.4f, 0f));
 		Handles.Label((Vector3)landing.point + Vector3.down * 1.2f,
-			moving ? "  MOVING platform — may not be there!" : "  lands safely (static)");
+			moving ? "  MOVING platform — may not be there!"
+			       : "  lands safely (painted to player colour at spawn)");
 
 		if (moving) DrawMoverPath(pm);
 	}
