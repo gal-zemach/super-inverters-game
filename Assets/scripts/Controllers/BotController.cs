@@ -90,7 +90,7 @@ namespace Controllers
         private bool _hasLandedSinceSpawn;
         private Collider2D _rideCollider;   // mover we're riding (or hovering above mid-descent)
         private float _airControlUntil;     // airborne steering allowed until this time (set by QueueJump)
-        private const float MaroonedSeconds = 2.5f;
+        private const float MaroonedSeconds = 1f;
         private float _nextStuckCheck;
         private float _stuckAnchorX = float.PositiveInfinity; // x at the previous stuck-check
         private float _dropUntil;           // getDown held until this time (drop-through escape)
